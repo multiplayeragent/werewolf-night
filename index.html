@@ -1,0 +1,1284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Werewolf Night</title>
+<style>
+  :root { --ink: #f3f0ff; --dim: #aab0d4; --panel: #10152ef0; --wolf: #ff5b6e; --seer: #c39bff; --vill: #7fd6a0; --gold: #ffd166; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #0a0f2c; }
+  body { font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; left: 0; top: 0; display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }
+  [hidden] { display: none !important; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 1px 3px #000c; }
+  #top { top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 92vw; }
+  #top > span { padding: 6px 12px; border-radius: 999px; background: #0008; font-size: 13px; font-weight: 700; }
+  #phase { font-weight: 900 !important; letter-spacing: .08em; }
+  #msg { text-align: center; font-weight: 900; font-size: clamp(20px, 4.4vw, 40px); line-height: 1.15; box-sizing: border-box; padding: 0 8px; }
+  #msg .b { display: inline-block; background: #090c25b8; padding: 8px 18px 10px; border-radius: 16px; }
+  #msg small { display: block; font-size: clamp(13px, 2.2vw, 18px); font-weight: 600; margin-top: 6px; color: #ebe8ff; }
+  .wolf { color: var(--wolf); } .seer { color: var(--seer); } .villager { color: var(--vill); } .gold { color: var(--gold); }
+  #side { position: fixed; display: flex; flex-direction: column; gap: 8px; padding: 10px; box-sizing: border-box; background: var(--panel); }
+  #side.right { border-left: 1px solid #ffffff1c; padding-top: max(10px, env(safe-area-inset-top)); padding-right: max(10px, env(safe-area-inset-right)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  #side.bottom { border-top: 1px solid #ffffff1c; border-radius: 16px 16px 0 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  #hint { font-weight: 700; font-size: 14px; color: var(--gold); min-height: 1.3em; }
+  #chat { flex: 1; min-height: 40px; overflow: auto; background: #0005; border-radius: 12px; padding: 8px 10px; font-size: 14px; display: flex; flex-direction: column; gap: 3px; user-select: text; -webkit-user-select: text; }
+  #chat b { margin-right: 6px; } #chat .sys { color: var(--dim); font-style: italic; }
+  #say { display: flex; gap: 8px; }
+  #say input, #name { flex: 1; min-width: 0; height: 44px; border-radius: 10px; border: 1px solid #ffffff33; background: #ffffff12; color: #fff; padding: 0 12px; font: inherit; font-size: 16px; box-sizing: border-box; }
+  #say input:disabled { opacity: .45; }
+  #say button, .go, #skip { min-height: 44px; border: 0; border-radius: 12px; background: var(--gold); color: #2a1d00; font: 800 15px system-ui, sans-serif; padding: 0 16px; cursor: pointer; }
+  #say button:disabled { opacity: .4; cursor: default; }
+  #row { display: flex; gap: 8px; align-items: center; }
+  #skip { background: #ffffff22; color: #fff; flex: 1; } #skip.mine { background: #ffd16655; }
+  #lobby { display: flex; gap: 8px; align-items: center; flex: 1; font-size: 13px; color: var(--dim); }
+  #net { bottom: max(6px, env(safe-area-inset-bottom)); left: max(10px, env(safe-area-inset-left)); font-size: 12px; opacity: .75; }
+  .over { position: fixed; inset: 0; display: grid; place-items: center; background: #04061ad0; padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); box-sizing: border-box; z-index: 10; }
+  .card { width: min(380px, calc(100vw - 32px)); max-height: 100%; overflow: auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 18px; background: #161c3c; border: 1px solid #ffffff22; box-shadow: 0 20px 60px #0008; text-align: center; }
+  .card h2 { margin: 0; font-size: 28px; }
+  #oWhy, #oNext { color: var(--dim); }
+  #oRoles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; text-align: left; font-size: 13px; }
+  #oRoles div { background: #ffffff0d; border-radius: 10px; padding: 5px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  #board { text-align: left; margin: 2px 0; padding-left: 26px; font-size: 14px; min-height: 30px; }
+  #board li span { float: right; }
+  .card h3 { margin: 4px 0 0; font-size: 13px; color: var(--gold); text-align: left; }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud" id="top"><span id="phase"></span><span id="role" hidden></span></div>
+<div class="hud" id="msg"></div>
+<div id="side">
+  <div id="hint"></div>
+  <div id="chat"></div>
+  <form id="say"><input id="sayText" maxlength="80" placeholder="Say something…" autocomplete="off" enterkeyhint="send"><button>Send</button></form>
+  <div id="row"><button id="skip" hidden>Skip vote</button><label id="lobby" hidden>Your name <input id="name" maxlength="14" autocomplete="off"></label></div>
+</div>
+<div class="hud" id="net">Connecting…</div>
+<div class="over" id="over" hidden><div class="card">
+  <h2 id="oTitle"></h2><div id="oWhy"></div><div id="oYou" class="gold"></div>
+  <div id="oRoles"></div>
+  <h3>Most wins</h3><ol id="board"><li>Loading…</li></ol>
+  <button class="go" id="again">Play again</button><div id="oNext"></div>
+</div></div>
+<script>
+/* ═══ WEREWOLF NIGHT · a Multiplayer Agent starter ═════════════════════════════════════════
+ * Wolves hunt by night. The village votes by day. Party, 4–10 players; bots fill empty seats.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ every number worth tuning: timers, seats, how the bots behave
+ *   ROLES & WORDS . the three roles, bot names, colors and everything the bots say
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
+ *   SEALED SECRETS  the Seal helper: a role is encrypted so only its owner can read it
+ *   GAME (HOST) ... phases (lobby, night, dawn, day, verdict, over), dealing roles, the night
+ *                   picks, votes, wins, seats for leavers, taking over as a new host
+ *   BOTS (HOST) ... bot memory (who they suspect), what they say, how they vote and hunt
+ *   ME ............ opening my role, tapping a player at night, voting, chatting
+ *   DRAW .......... the village, the campfire, the villagers, gravestones, votes, bubbles
+ *   SCREENS ....... HUD, banners, hints, chat panel, results, leaderboard, sounds
+ *   INPUT ......... tap or click a player, Enter to chat
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `n` (name), `c` (color), `pk` (public key) once, and
+ *     `hb` (heartbeat) once a second. Nobody moves, so that is all.
+ *   - The HOST is the lowest sessionId among live players, worked out every frame. Only the
+ *     host writes the shared fields: `game` (the whole game: phase, timers, seats, the dead
+ *     and their revealed roles, who has acted tonight, votes, results; `v` goes up on every
+ *     write), `roles` (each human's role, SEALED), `whisper` (night news only some may see,
+ *     SEALED: the wolves' picks to the wolves, what the seer saw to the seer) and `chat`.
+ *   - Roles are HIDDEN: the host seals each role to that player's key, so nobody else can read
+ *     it (the host deals, so it knows). When the host changes, every player re-sends its own
+ *     role to the new host ("role", sealed). A wolf or seer role nobody claims goes to a bot.
+ *   - Intents to the host: "act" (sealed, so a wolf's bite, the seer's look and a villager's
+ *     hunch look the same on the wire), "vote", "chat", "ready". The host checks each one.
+ *   - Timers are timestamps in `game` (endsAt, votesAt); a new host carries on from them.
+ *   - ?attract plays offline with bots only (the preview video is recorded from it).
+ *   - Leaderboard "wins": +1 for every game your side wins.
+ */
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  seats: 8,               // bots fill the village up to this many players (4–10)
+  maxPlayers: 10,         // more people than this watch until the next game
+  twoWolvesAt: 7,         // this many players or more: two werewolves, otherwise one
+  lobbyMs: 7000,          // countdown before a game
+  introMs: 3500,          // the role card at the start of the first night; nobody acts yet
+  nightMs: 22000,         // the night: wolves hunt, the seer looks, everyone taps someone
+  hurryMs: 1500,          // once everyone has acted (or voted), the phase ends this much later
+  dawnMs: 5000,           // the morning news: who the wolves took
+  talkMs: 15000,          // the day: talk this long before voting opens…
+  voteMs: 25000,          // …then this long to vote (ends early once everyone has voted)
+  verdictMs: 5500,        // who the village banished, and what they were
+  overMs: 15000,          // the results screen
+  leaveMs: 12000,         // a player silent this long hands its seat to a bot
+  rejoinMs: 2500,         // a new host waits this long for the roles to be re-sent
+  chatLines: 8,           // chat lines kept in state
+  chatMax: 80,            // characters per chat line
+  botLines: [1, 3],       // lines each bot says per day (fewest, most)
+  botActMs: [2500, 9000], // when in the night a bot acts (ms after the night opens)
+  botTrust: 0.75,         // chance a village bot believes someone claiming to be the seer
+  botFakeSeer: 0.2,       // chance a bot wolf pretends to be the seer
+  board: "wins",          // leaderboard: games won
+};
+
+// ── ROLES & WORDS ───────────────────────────────────────────────────────────────────
+const ROLE = {
+  wolf: { name: "Werewolf", color: "#ff5b6e", goal: "Pick a victim each night with your pack. Don't get caught by day." },
+  seer: { name: "Seer", color: "#c39bff", goal: "Each night, look at one player and learn if they are a werewolf." },
+  villager: { name: "Villager", color: "#7fd6a0", goal: "Find the werewolves and vote them out before they outnumber you." },
+};
+const BOT_NAMES = ["Hazel", "Bram", "Tilly", "Otto", "Mabel", "Rowan", "Pip", "Greta", "Fenn", "Ivy"];
+const FRIENDLY = ["Maple", "Juniper", "Clover", "Basil", "Wren", "Sorrel", "Fable", "Briar", "Poppy", "Thistle"];
+// [name, hue, saturation %, lightness %]
+const COLORS = [["Red", 356, 70, 52], ["Blue", 218, 72, 58], ["Green", 140, 52, 44], ["Gold", 44, 88, 55], ["Purple", 272, 58, 60],
+  ["Orange", 24, 86, 55], ["Teal", 178, 62, 42], ["Pink", 326, 70, 64], ["Lime", 88, 58, 48], ["Snow", 220, 16, 84]];
+const hsl = (ci, dl = 0, a = 1) => { const c = COLORS[ci] || COLORS[0]; return `hsla(${c[1]},${c[2]}%,${c[3] + dl}%,${a})`; };
+const SKIN = ["#f3cfb1", "#e3b08b", "#c98d66", "#99643f", "#6e4529", "#f7dcc4"];
+// What bots say. {t} = the player they mean, {s} = who said it first, {dead} = last night's victim, {last} = who was banished.
+const SAY = {
+  open: ["Poor {dead}. Who did this?", "{dead} is gone. Somebody here knows why.", "I heard howling near {dead}'s house.", "Not {dead}! Okay, think, everyone."],
+  quiet: ["A quiet night. Lucky us.", "Nobody taken? The wolves are getting careful.", "Everyone's still here. Suspicious."],
+  right: ["{last} was a wolf! Good call, village.", "One wolf down. Keep going."],
+  wrong: ["We banished {last} for nothing.", "{last} was innocent. Who pushed for that?", "That was a mistake yesterday."],
+  accuse: ["I don't trust {t}.", "{t} has been way too quiet.", "My gut says {t}.", "Anyone else think {t} is acting weird?", "I'm voting {t}.", "{t}, where were you last night?", "Something about {t} feels off."],
+  agree: ["Agreed, {t} looks guilty.", "{t}, explain yourself.", "I'm with {s} on {t}.", "Yeah, {t}. Let's do it."],
+  defend: ["It's not me, I swear!", "Why me? I'm just a villager.", "{s} is pointing fingers to hide something.", "Seer, check me tonight. I'm clean.", "Look at {s}, not me."],
+  claimWolf: ["I'm the seer. {t} is a WEREWOLF!", "Seer here. I looked at {t}: wolf!", "Trust me, I'm the seer. {t} is a wolf."],
+  realSeer: ["No, I'M the seer. {t} is the wolf!", "That's a fake seer. I saw {t}: wolf."],
+  claimGood: ["I'm the seer. {t} is clean.", "Seer here: {t} is on our side."],
+  wolfLie: ["{t} is lying. No way they're the seer.", "Fake seer! It's {t}.", "{t} is way too eager to point fingers.", "Let's not rush. {t} feels off, though."],
+  unsure: ["No idea yet.", "Skip? We don't know enough.", "Hmm.", "Let's hear from {t}.", "Could be anyone.", "I was asleep. I saw nothing."],
+};
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'werewolf-night',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true,
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+const memo = new Map();
+/** A shared JSON field, parsed once per change (read-only: never mutate what this returns). */
+function shared(key, fb) {
+  const raw = S.shared[key], m = memo.get(key);
+  if (m && m.raw === raw) return m.v;
+  const v = parse(raw, fb);
+  memo.set(key, { raw, v });
+  return v;
+}
+let net = null, S = { entities: { players: {} }, shared: {} };
+const seenHb = new Map(); // sessionId -> { hb, at } on OUR clock
+/** Players whose heartbeat moved in the last 3s (plus us), sorted by sessionId. */
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+const isHost = () => livePlayers()[0] === net.sessionId;
+const humans = () => livePlayers().filter((id) => !(ATTRACT && id === net.sessionId));
+/** Still in the room and heard from within CONFIG.leaveMs (else a bot takes the seat). */
+const stillHere = (id) => id === net.sessionId || (!!S.entities.players?.[id] && performance.now() - (seenHb.get(id)?.at ?? -1e9) < CONFIG.leaveMs);
+const nameOf = (id) => (id === net.sessionId ? myName : String(S.entities.players?.[id]?.n ?? "Player")).slice(0, 14);
+const colorOf = (id) => (id === net.sessionId ? myColor : Number(S.entities.players?.[id]?.c ?? 0));
+const pkOf = (id) => (id === net.sessionId ? Seal.pub : S.entities.players?.[id]?.pk);
+
+// ── SEALED SECRETS ──────────────────────────────────────────────────────────────────
+// Hidden info in a relay room. Everything in room state reaches every client, so a secret
+// (your role, what the seer saw) is written SEALED: encrypted so only its one reader can open
+// it. Each player publishes a public key in its own entity (`pk`); the host seals each secret
+// to that key and writes the boxes into shared state.
+//   - The host deals, so the host can read every secret. Fine for friends, not cheat-proof.
+//   - A new host can't open boxes the old host sealed, so on a host change every player
+//     re-sends its own role to the new host (sealed, with mp.send).
+//   - crypto.subtle needs https or localhost. Without it seal()/open() pass the value through.
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const Seal = {
+  pair: null,
+  pub: "",
+  keys: new Map(), // other player's public key -> derived AES key
+  get on() { return !!(window.crypto && crypto.subtle); },
+  /** Make this player's key pair. Returns the public key to publish: me.set("pk", pub). */
+  async init() {
+    if (!this.on) return "";
+    this.pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveKey"]);
+    this.pub = b64(await crypto.subtle.exportKey("raw", this.pair.publicKey));
+    return this.pub;
+  },
+  async key(otherPub) {
+    let k = this.keys.get(otherPub);
+    if (!k) {
+      const theirs = await crypto.subtle.importKey("raw", unb64(otherPub), { name: "ECDH", namedCurve: "P-256" }, false, []);
+      k = await crypto.subtle.deriveKey({ name: "ECDH", public: theirs }, this.pair.privateKey, { name: "AES-GCM", length: 128 }, false, ["encrypt", "decrypt"]);
+      this.keys.set(otherPub, k);
+    }
+    return k;
+  },
+  /** Seal any JSON value so only the holder of `toPub` (and you) can open it. */
+  async seal(toPub, value) {
+    if (!this.on || !toPub || !this.pair) return "p:" + JSON.stringify(value);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await this.key(toPub), new TextEncoder().encode(JSON.stringify(value)));
+    return b64(iv) + "." + b64(ct);
+  },
+  /** Open a box sealed by the player whose public key is `fromPub`. Null if it isn't for you. */
+  async open(fromPub, box) {
+    if (typeof box !== "string") return null;
+    if (box.startsWith("p:")) return JSON.parse(box.slice(2));
+    if (!this.on || !fromPub || !this.pair) return null;
+    try {
+      const [iv, ct] = box.split(".").map(unb64);
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, await this.key(fromPub), ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch { return null; }
+  },
+};
+
+// ── GAME (HOST) ─────────────────────────────────────────────────────────────────────
+// What only the host knows: every role, the wolves' picks tonight, what each seer saw, the bots.
+const host = { last: null, was: false, gid: 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(),
+  brains: new Map(), claims: new Set(), accused: new Map(), lastAccuser: new Map(), lastOut: null, plan: null,
+  chat: { g: 0, c: 0, l: [] }, graceUntil: 0, needFill: false, dealing: false, sealing: false, rolesDirty: false, whisperDirty: false };
+const heard = new Map(); // roles other players re-sent to me, in case I become host: id -> {g, r, w, k, p}
+
+const gameMemo = { raw: undefined, g: null };
+/** The game as state has it, or the host's own newer write that hasn't come back yet. */
+function game() {
+  if (gameMemo.raw !== S.shared.game) { gameMemo.raw = S.shared.game; gameMemo.g = parse(S.shared.game, null); }
+  const g = gameMemo.g;
+  return host.last && isHost() && (!g || host.last.v > g.v) ? host.last : g;
+}
+function writeGame(g) { g = { ...g, v: (game()?.v ?? 0) + 1 }; host.last = g; net.setShared("game", JSON.stringify(g)); return g; }
+const patch = (changes) => writeGame({ ...game(), ...changes });
+const newGame = (id) => ({ id, ph: "lobby", n: 0, at: Date.now(), endsAt: Date.now() + CONFIG.lobbyMs, votesAt: 0, ros: [], dead: [], wl: 0,
+  acted: [], votes: {}, night: null, out: null, win: "", reveal: null, ready: [] });
+const seatIn = (g, id) => (g ? g.ros.find((r) => r.i === id) : null);
+const deadEntry = (g, id) => g.dead.find((d) => d[0] === id);       // [id, role, "w" taken by wolves | "v" voted out]
+const alive = (g, id) => !!g && !!seatIn(g, id) && !deadEntry(g, id);
+const living = (g) => g.ros.filter((r) => !deadEntry(g, r.i)).map((r) => r.i);
+const nameIn = (g, id) => seatIn(g, id)?.n || "Someone";
+const roleOf = (id) => host.roles.get(id) || "villager";
+const nightOpensAt = (g) => g.at + (g.n === 1 ? CONFIG.introMs : 0);
+const votesOn = (g, id) => Object.values(g.votes).filter((v) => v === id).length;
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const rnd = (a, b) => a + Math.random() * (b - a);
+/** The item with the highest score (null for an empty list). */
+const best = (list, score) => { let top = null, hi = -Infinity; for (const x of list) { const s = score(x); if (s > hi) { hi = s; top = x; } } return top; };
+
+/** Lobby over: seat everyone, fill with bots, deal sealed roles, the first night falls. */
+async function deal(g) {
+  if (host.dealing) return;
+  host.dealing = true;
+  try {
+    const ps = S.entities.players || {};
+    const hs = humans().filter((id) => ps[id] && (pkOf(id) || !Seal.on)).slice(0, CONFIG.maxPlayers);
+    const nBots = Math.max(0, Math.min(CONFIG.maxPlayers, CONFIG.seats) - hs.length);
+    const used = new Set(hs.map(colorOf)), free = COLORS.map((_, i) => i).filter((i) => !used.has(i)), names = shuffle([...BOT_NAMES]);
+    const ros = hs.map((id) => ({ i: id, n: nameOf(id), c: colorOf(id) }));
+    for (let k = 0; k < nBots; k++) ros.push({ i: "bot" + (k + 1), n: names[k % names.length], c: free[k % free.length] ?? k, b: 1 });
+    shuffle(ros); // seats around the fire
+    const order = shuffle(ros.map((r) => r.i)), wolves = ros.length >= CONFIG.twoWolvesAt ? 2 : 1;
+    host.roles = new Map(ros.map((r) => [r.i, "villager"]));
+    order.slice(0, wolves).forEach((id) => host.roles.set(id, "wolf"));
+    host.roles.set(order[wolves], "seer");
+    Object.assign(host, { gid: g.id, told: new Set(hs), peeks: new Map(), picks: new Map(), redealt: new Set(), brains: new Map(), claims: new Set(),
+      accused: new Map(), lastAccuser: new Map(), lastOut: null, plan: null, needFill: false });
+    const box = await sealRoles(g.id, ros, null);
+    if (!isHost() || game()?.id !== g.id || game()?.ph !== "lobby") return; // the room moved on while we sealed
+    net.setShared("roles", JSON.stringify({ g: g.id, pk: Seal.pub, box }));
+    net.setShared("whisper", JSON.stringify({ g: g.id, pk: Seal.pub, box: {} }));
+    const t = Date.now();
+    patch({ ph: "night", n: 1, at: t, endsAt: t + CONFIG.introMs + CONFIG.nightMs, ros, dead: [], wl: wolves, acted: [], votes: {}, night: null, out: null });
+    sysChat(game(), "Night falls on the village. Roles are dealt.");
+  } finally { host.dealing = false; }
+}
+/** Seal each human's role (and, for wolves, the pack) to them. `only`: just these players. */
+async function sealRoles(gid, ros, only) {
+  const pack = ros.filter((r) => roleOf(r.i) === "wolf").map((r) => r.i), box = {};
+  for (const r of ros) if (!r.b && (!only || only.has(r.i)) && (pkOf(r.i) || !Seal.on || net.offline)) box[r.i] = await Seal.seal(pkOf(r.i), { g: gid, r: roleOf(r.i), w: roleOf(r.i) === "wolf" ? pack : [] }); // never in the clear
+  return box;
+}
+/** Write the sealed fields that changed: `roles` (after a host change) and `whisper` (night news). */
+async function flushSecrets() {
+  if (host.sealing || (!host.rolesDirty && !host.whisperDirty)) return;
+  host.sealing = true;
+  try {
+    const g = game();
+    if (!g || !g.ros.length) { host.rolesDirty = host.whisperDirty = false; return; }
+    if (host.rolesDirty) {
+      host.rolesDirty = false;
+      const box = await sealRoles(g.id, g.ros, host.told);
+      if (isHost() && game()?.id === g.id) net.setShared("roles", JSON.stringify({ g: g.id, pk: Seal.pub, box }));
+    }
+    if (host.whisperDirty) {
+      host.whisperDirty = false;
+      const box = {}, picks = Object.fromEntries(host.picks);
+      for (const r of g.ros) {
+        if (r.b || (!pkOf(r.i) && Seal.on && !net.offline)) continue; // never in the clear
+        if (roleOf(r.i) === "wolf") box[r.i] = await Seal.seal(pkOf(r.i), { g: g.id, n: g.n, p: picks });
+        if (roleOf(r.i) === "seer") box[r.i] = await Seal.seal(pkOf(r.i), { g: g.id, k: host.peeks.get(r.i) || {} });
+      }
+      if (isHost() && game()?.id === g.id) net.setShared("whisper", JSON.stringify({ g: g.id, pk: Seal.pub, box }));
+    }
+  } finally { host.sealing = false; }
+}
+
+function hostTick() {
+  if (!host.was) adopt();
+  const t = Date.now(), settled = performance.now() >= host.graceUntil;
+  let g = game();
+  if (!g) g = writeGame(newGame(1));
+  if (g.ph === "lobby") { if (t >= g.endsAt) deal(g); }
+  else if (g.ph === "over") { if (t >= g.endsAt) writeGame(newGame(g.id + 1)); }
+  else if (settled) {
+    if (host.needFill) fillRoles(g);
+    g = seatChanges(g);
+    if (g.ph === "night") { botsNight(g, t); if (t >= game().endsAt) resolveNight(game()); }
+    else if (g.ph === "dawn") { if (t >= g.endsAt && !checkWin(g)) startDay(g); }
+    else if (g.ph === "day") { botsDay(g, t); if (t >= game().endsAt) tally(game()); }
+    else if (g.ph === "verdict") { if (t >= g.endsAt && !checkWin(g)) startNight(g); }
+  }
+  flushSecrets();
+}
+
+/** A player tapped someone at night (sealed, already opened): a bite, a look, or a hunch. */
+function onAct(from, d) {
+  const g = game();
+  if (!g || g.ph !== "night" || !d || d.n !== g.n || !alive(g, from) || !alive(g, d.t) || d.t === from || Date.now() < nightOpensAt(g) - 500) return;
+  const r = roleOf(from);
+  if (r === "wolf") { if (roleOf(d.t) === "wolf") return; host.picks.set(from, d.t); host.whisperDirty = true; }
+  if (r === "seer") {
+    if (g.acted.includes(from)) return; // one look a night
+    host.peeks.set(from, { ...(host.peeks.get(from) || {}), [d.t]: roleOf(d.t) === "wolf" ? "wolf" : "good" }); host.whisperDirty = true;
+  }
+  markActed(from);
+}
+function markActed(id) {
+  const g = game();
+  if (g.acted.includes(id)) return;
+  const acted = [...g.acted, id], all = living(g).every((x) => acted.includes(x));
+  patch({ acted, endsAt: all ? Math.min(g.endsAt, Date.now() + CONFIG.hurryMs) : g.endsAt });
+}
+/** Morning: the wolves' pick is taken (two wolves who disagree: one of their picks). */
+function resolveNight(g) {
+  const picks = [...host.picks].filter(([w, t]) => alive(g, w) && roleOf(w) === "wolf" && alive(g, t) && roleOf(t) !== "wolf").map(([, t]) => t);
+  const victim = picks.length ? pick(picks) : "", t = Date.now();
+  if (victim) botsHearDeath(victim);
+  patch({ ph: "dawn", at: t, endsAt: t + CONFIG.dawnMs, night: { i: victim }, dead: victim ? [...g.dead, [victim, roleOf(victim), "w"]] : g.dead });
+}
+function startDay(g) {
+  const t = Date.now();
+  host.plan = null;
+  patch({ ph: "day", at: t, votesAt: t + CONFIG.talkMs, endsAt: t + CONFIG.talkMs + CONFIG.voteMs, votes: {}, acted: [] });
+}
+function onVote(from, msg) {
+  const g = game(), v = msg && msg.t;
+  if (!g || g.ph !== "day" || !alive(g, from) || g.votes[from] || Date.now() < g.votesAt - 500) return;
+  if (v !== "skip" && (!alive(g, v) || v === from)) return;
+  const votes = { ...g.votes, [from]: v }, all = living(g).every((x) => votes[x]);
+  patch({ votes, endsAt: all ? Math.min(g.endsAt, Date.now() + CONFIG.hurryMs) : g.endsAt });
+}
+/** Count the votes: the most votes is banished; a tie or a skip win banishes nobody. */
+function tally(g) {
+  const count = {};
+  for (const v of Object.values(g.votes)) count[v] = (count[v] || 0) + 1;
+  let top = "", most = 0, tie = false;
+  for (const [v, n] of Object.entries(count)) { if (n > most) { top = v; most = n; tie = false; } else if (n === most) tie = true; }
+  const out = tie || top === "skip" ? "" : top, r = out ? roleOf(out) : "", t = Date.now();
+  if (out) botsHearVerdict(g, out, r);
+  host.lastOut = { i: out, r, n: g.n };
+  patch({ ph: "verdict", at: t, endsAt: t + CONFIG.verdictMs, out: { i: out, r, tie, k: most }, dead: out ? [...g.dead, [out, r, "v"]] : g.dead, wl: g.wl - (r === "wolf" ? 1 : 0) });
+}
+function startNight(g) {
+  host.picks.clear(); host.plan = null; host.whisperDirty = true;
+  const t = Date.now();
+  patch({ ph: "night", n: g.n + 1, at: t, endsAt: t + CONFIG.nightMs, acted: [], votes: {}, night: null, out: null });
+}
+/** Village wins with no wolves left; wolves win once they are as many as everyone else. */
+function checkWin(g) {
+  const wolves = g.wl, good = living(g).length - wolves;
+  const win = wolves <= 0 ? "village" : wolves >= good ? "wolves" : "";
+  if (!win) return false;
+  const t = Date.now();
+  patch({ ph: "over", at: t, endsAt: t + CONFIG.overMs, win, reveal: Object.fromEntries(g.ros.map((r) => [r.i, roleOf(r.i)])), ready: [] });
+  return true;
+}
+/** Someone who left hands their seat to a bot (same name, same role); someone back gets it back. */
+function seatChanges(g) {
+  const live = new Set(humans()), lines = [];
+  let changed = false;
+  const ros = g.ros.map((r) => {
+    if (!r.b && !stillHere(r.i)) { changed = true; lines.push(`${r.n} left. A bot plays on for them.`); return { ...r, b: 1, gone: 1 }; }
+    if (r.gone && live.has(r.i)) { changed = true; lines.push(`${r.n} is back.`); return { i: r.i, n: r.n, c: r.c }; }
+    return r;
+  });
+  if (!changed) return g;
+  const ng = patch({ ros });
+  lines.forEach((l) => sysChat(ng, l));
+  return ng;
+}
+
+/** Become host: take over the game exactly as state has it. Roles come back as players re-send them. */
+function adopt() {
+  host.was = true; host.last = null;
+  const g = game(), mid = !!g && !["lobby", "over"].includes(g.ph);
+  host.graceUntil = performance.now() + (mid ? CONFIG.rejoinMs : 0);
+  host.needFill = mid; host.plan = null;
+  if (!g || host.gid !== g.id) { // I didn't run this game before: start from what players tell me
+    Object.assign(host, { gid: g ? g.id : 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(), brains: new Map(),
+      claims: new Set(), accused: new Map(), lastAccuser: new Map(), lastOut: null });
+  }
+  if (g && myRole && myRole.g === g.id) learn(net.sessionId, mySecret(g), g);
+  for (const [id, v] of heard) if (g && v.g === g.id) learn(id, v, g);
+  host.chat = shared("chat", null) || { g: 0, c: 0, l: [] };
+  if (mid && !net.offline) net.send("who", { g: g.id });
+}
+function learn(id, v, g) {
+  if (!seatIn(g, id) || !ROLE[v.r]) return;
+  host.roles.set(id, v.r); host.told.add(id);
+  if (v.r === "seer" && v.k) host.peeks.set(id, { ...v.k });
+  if (v.r === "wolf" && v.p && v.p.n === g.n) host.picks.set(id, v.p.t);
+}
+/** After a host change: revealed roles are facts, unknown ones are villagers, and the wolf and seer
+ *  counts are made right by giving a missing role to a living bot (or taking an extra one back). */
+function fillRoles(g) {
+  host.needFill = false;
+  for (const d of g.dead) host.roles.set(d[0], d[1]);
+  for (const r of g.ros) if (!host.roles.has(r.i)) host.roles.set(r.i, "villager");
+  const live = g.ros.filter((r) => alive(g, r.i)), bots = shuffle(live.filter((r) => r.b && !host.told.has(r.i)));
+  const count = (role) => live.filter((r) => roleOf(r.i) === role).length, seers = g.dead.some((d) => d[1] === "seer") ? 0 : 1;
+  for (const b of bots) if (count("wolf") > g.wl && roleOf(b.i) === "wolf") host.roles.set(b.i, "villager");
+  for (const b of bots) if (count("seer") > seers && roleOf(b.i) === "seer") host.roles.set(b.i, "villager");
+  for (const b of bots) if (count("wolf") < g.wl && roleOf(b.i) === "villager") { host.roles.set(b.i, "wolf"); host.redealt.add(b.i); }
+  for (const b of bots) if (count("seer") < seers && roleOf(b.i) === "villager") { host.roles.set(b.i, "seer"); host.redealt.add(b.i); }
+  host.rolesDirty = host.whisperDirty = true;
+}
+/** A role re-sent to me (I am, or may become, the host). A late one undoes a bot stand-in. */
+function learnRole(id, v) {
+  const g = game();
+  if (!g || v.g !== g.id || !seatIn(g, id)) return;
+  learn(id, v, g);
+  if (host.needFill) return;
+  if (v.r !== "villager") for (const b of host.redealt) if (roleOf(b) === v.r) { host.roles.set(b, "villager"); host.redealt.delete(b); break; }
+  host.rolesDirty = host.whisperDirty = true;
+}
+
+function onChat(from, msg) {
+  const g = game();
+  if (!g || typeof msg.t !== "string" || !canTalk(g, from)) return;
+  const text = msg.t.replace(/\s+/g, " ").trim().slice(0, CONFIG.chatMax);
+  if (!text) return;
+  addChat(g, from, text);
+  botsHear(g, from, text);
+}
+/** Lobby and results: anyone. Dawn to verdict: living players in the game. Night: nobody. */
+const canTalk = (g, id) => g.ph === "lobby" || g.ph === "over" || (["dawn", "day", "verdict"].includes(g.ph) && alive(g, id));
+function addChat(g, id, text) {
+  const c = host.chat.g === g.id ? host.chat : { g: g.id, c: 0, l: [] };
+  host.chat = { g: g.id, c: c.c + 1, l: [...c.l, [id, text]].slice(-CONFIG.chatLines) };
+  net.setShared("chat", JSON.stringify(host.chat));
+}
+const sysChat = (g, text) => addChat(g, "", text);
+function onReady(from) {
+  const g = game();
+  if (!g || g.ph !== "over" || g.ready.includes(from)) return;
+  const ready = [...g.ready, from], all = humans().every((id) => ready.includes(id));
+  patch({ ready, endsAt: all ? Math.min(g.endsAt, Date.now() + 1500) : g.endsAt });
+}
+const HANDLERS = { vote: onVote, chat: onChat, ready: onReady };
+/** Ask the host to do something. The host's own intents run right here (mp.send never echoes). */
+function toHost(type, msg) { if (isHost()) HANDLERS[type](net.sessionId, msg); else net.send(type, msg); }
+
+// ── BOTS (HOST) ─────────────────────────────────────────────────────────────────────
+// Each bot keeps a little memory: how much it suspects each player, who threatens the pack.
+function brain(id) {
+  let b = host.brains.get(id);
+  if (!b) host.brains.set(id, (b = { sus: new Map(), threat: new Map(), said: new Set(), told: new Set(), accusedBy: "", accusedAt: 0, defended: true, day: 0, lines: 0, faked: false }));
+  return b;
+}
+const bump = (m, k, d) => m.set(k, (m.get(k) || 0) + d);
+const botsAlive = (g) => g.ros.filter((r) => r.b && alive(g, r.i)).map((r) => r.i);
+/** How much bot `id` suspects `x`: what it heard, plus what it saw if it is the seer. */
+const suspicion = (b, id, x) => (b.sus.get(x) || 0) + ({ wolf: 10, good: -5 }[(host.peeks.get(id) || {})[x]] || 0);
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Does a chat line name this player? (Their full name, or a first name of 3+ letters.) */
+function mentions(low, name) {
+  const n = String(name).toLowerCase(), first = n.split(/\s+/)[0];
+  return low.includes(n) || (first.length >= 3 && new RegExp("\\b" + escRe(first) + "\\b").test(low));
+}
+/** Every chat line moves the bots' suspicions: being named looks bad, unless it's "clean". */
+function botsHear(g, from, text) {
+  if (!from || !["dawn", "day", "verdict"].includes(g.ph)) return;
+  const low = text.toLowerCase(), named = g.ros.filter((r) => r.i !== from && alive(g, r.i) && mentions(low, r.n)).map((r) => r.i);
+  if (!named.length) return;
+  const seerTalk = /\bseer\b/.test(low), wolfWord = /wolf/.test(low), clean = /clean|innocent|on our side|not (a |the )?wolf/.test(low);
+  if (seerTalk && (wolfWord || clean)) host.claims.add(from);
+  for (const t of named) {
+    if (!clean) { host.lastAccuser.set(t, from); host.accused.set(from, new Set([...(host.accused.get(from) || []), t])); }
+    for (const id of botsAlive(g)) {
+      if (id === from || id === t) continue;
+      const b = brain(id);
+      if (roleOf(id) === "wolf") { if (!clean && roleOf(t) === "wolf") bump(b.threat, from, 1.5); continue; }
+      const trust = seerTalk ? (Math.random() < CONFIG.botTrust ? 1 : 0.2) : 1;
+      bump(b.sus, t, (clean ? -1.5 : seerTalk && wolfWord ? 4 : 0.5 + Math.random() * 0.6) * trust);
+    }
+    if (seatIn(g, t)?.b && !clean) { const tb = brain(t); Object.assign(tb, { accusedBy: from, accusedAt: Date.now(), defended: false }); bump(tb.sus, from, 1); }
+  }
+}
+/** Wolves take people who point at them, so whoever the victim accused looks worse. */
+function botsHearDeath(victim) {
+  for (const x of host.accused.get(victim) || []) for (const b of host.brains.values()) bump(b.sus, x, 0.8);
+}
+/** Banishing an innocent makes its voters look bad; banishing a wolf clears them a little. */
+function botsHearVerdict(g, out, role) {
+  for (const [voter, v] of Object.entries(g.votes)) if (v === out) for (const b of host.brains.values()) bump(b.sus, voter, role === "wolf" ? -0.6 : 0.7);
+}
+/** When each bot acts tonight / talks and votes today. Planned once per phase (a new host re-plans). */
+function planFor(g) {
+  const key = g.id + ":" + g.ph + ":" + g.n, t = Date.now();
+  if (!host.plan || host.plan.key !== key) host.plan = { key, m: new Map() };
+  for (const id of botsAlive(g)) {
+    if (host.plan.m.has(id)) continue;
+    if (g.ph === "night") { host.plan.m.set(id, { act: Math.max(t, nightOpensAt(g)) + rnd(...CONFIG.botActMs) }); continue; }
+    const n = Math.round(rnd(CONFIG.botLines[0], CONFIG.botLines[1])), says = [];
+    for (let k = 0; k < n; k++) says.push(t + rnd(500, Math.max(900, g.endsAt - t - CONFIG.voteMs * 0.35)));
+    host.plan.m.set(id, { says: says.sort((a, b) => a - b), vote: Math.max(t, g.votesAt) + CONFIG.voteMs * rnd(0.08, 0.55) });
+  }
+  return host.plan.m;
+}
+function botsNight(g, t) {
+  for (const [id, p] of planFor(g)) {
+    if (p.done || t < p.act || !alive(game(), id) || !seatIn(game(), id)?.b) continue;
+    p.done = true;
+    onAct(id, { n: g.n, t: botNightPick(game(), id) });
+  }
+}
+/** A wolf hunts the seer claimer or whoever threatens the pack; the seer looks at a suspect. */
+function botNightPick(g, id) {
+  const others = living(g).filter((x) => x !== id), b = brain(id);
+  if (roleOf(id) === "wolf") {
+    const mate = [...host.picks].find(([w, t]) => w !== id && alive(g, t));
+    if (mate && Math.random() < 0.85) return mate[1];
+    return best(others.filter((x) => roleOf(x) !== "wolf"), (x) => (host.claims.has(x) ? 5 : 0) + (b.threat.get(x) || 0) + Math.random() * 2);
+  }
+  if (roleOf(id) === "seer") { const seen = host.peeks.get(id) || {}; return best(others.filter((x) => !seen[x]), (x) => suspicion(b, id, x) + Math.random() * 2) || pick(others); }
+  return pick(others); // a villager's hunch: it only hides who is who
+}
+function botsDay(g, t) {
+  for (const [id, p] of planFor(g)) {
+    const cur = game();
+    if (!alive(cur, id) || !seatIn(cur, id)?.b) continue;
+    if (p.says.length && t >= p.says[0]) { p.says.shift(); const line = botLine(cur, id); if (line) onChat(id, { t: line }); }
+    if (!p.voted && t >= p.vote && t >= cur.votesAt) { p.voted = true; onVote(id, { t: botVote(game(), id) }); }
+  }
+}
+/** One line from a bot, filled with names. Avoids repeating itself. `at`: who it points at (it votes for them later). */
+function say(b, list, vars, at) {
+  if (at) b.pointed = at;
+  let line = pick(list);
+  for (let k = 0; k < 3 && b.said.has(line); k++) line = pick(list);
+  b.said.add(line);
+  return line.replace(/\{(\w+)\}/g, (_, k) => vars[k] || "someone");
+}
+function botLine(g, id) {
+  const b = brain(id), role = roleOf(id), others = living(g).filter((x) => x !== id), nm = (x) => nameIn(g, x), t = Date.now();
+  if (b.day !== g.n) { b.day = g.n; b.lines = 0; }
+  b.lines++;
+  if (!b.defended && t - b.accusedAt < 15000 && alive(g, b.accusedBy)) { b.defended = true; return say(b, SAY.defend, { s: nm(b.accusedBy) }); }
+  const rival = [...host.claims].some((c) => c !== id && alive(g, c));
+  if (role === "seer") { // share what it saw, the first time, or when someone else claims to be the seer
+    const seen = host.peeks.get(id) || {}, wolf = others.find((x) => seen[x] === "wolf" && !b.told.has(x)), good = others.find((x) => seen[x] === "good" && !b.told.has(x));
+    if (wolf && (rival || g.n > 1 || Math.random() < 0.7)) { b.told.add(wolf); host.claims.add(id); return say(b, rival ? SAY.realSeer : SAY.claimWolf, { t: nm(wolf) }, wolf); }
+    if (good && (rival || (g.n > 1 && Math.random() < 0.5))) { b.told.add(good); host.claims.add(id); return say(b, SAY.claimGood, { t: nm(good) }); }
+  }
+  if (b.lines === 1 && Math.random() < 0.5) { // react to the news first
+    const lo = host.lastOut;
+    if (lo && lo.i && lo.n === g.n - 1) return say(b, lo.r === "wolf" ? SAY.right : SAY.wrong, { last: nm(lo.i) });
+    if (g.night) return g.night.i ? say(b, SAY.open, { dead: nm(g.night.i) }) : say(b, SAY.quiet, {});
+  }
+  if (role === "wolf") {
+    const prey = others.filter((x) => roleOf(x) !== "wolf"), claimer = [...host.claims].find((c) => c !== id && alive(g, c) && roleOf(c) !== "wolf");
+    if (claimer && Math.random() < 0.6) return say(b, SAY.wolfLie, { t: nm(claimer) }, claimer);
+    const framed = pick(prey);
+    if (!host.claims.size && !b.faked && framed && Math.random() < CONFIG.botFakeSeer) { b.faked = true; host.claims.add(id); return say(b, SAY.claimWolf, { t: nm(framed) }, framed); }
+    const x = best(prey, (p) => votesOn(g, p) * 1.5 + (b.threat.get(p) || 0) + Math.random() * 2);
+    const s = x && host.lastAccuser.get(x);
+    return x ? say(b, s && s !== id && Math.random() < 0.5 ? SAY.agree : SAY.accuse, { t: nm(x), s: nm(s) }, x) : say(b, SAY.unsure, { t: nm(pick(others)) });
+  }
+  const x = best(others, (p) => suspicion(b, id, p) + Math.random() * 0.8);
+  if (!x || suspicion(b, id, x) < 0.5) return say(b, SAY.unsure, { t: nm(pick(others)) });
+  const s = host.lastAccuser.get(x);
+  return say(b, s && s !== id && Math.random() < 0.55 ? SAY.agree : SAY.accuse, { t: nm(x), s: nm(s) }, x);
+}
+function botVote(g, id) {
+  const b = brain(id), others = living(g).filter((x) => x !== id);
+  if (b.pointed && b.day === g.n && others.includes(b.pointed) && Math.random() < 0.7) return b.pointed; // stand by what it said today
+  if (roleOf(id) === "wolf") return best(others.filter((x) => roleOf(x) !== "wolf"), (x) => votesOn(g, x) * 1.2 + (host.claims.has(x) ? 2 : 0) + (b.threat.get(x) || 0) + Math.random() * 1.5) || "skip";
+  const score = (x) => suspicion(b, id, x) + votesOn(g, x) * 0.6;
+  const x = best(others, (p) => score(p) + Math.random() * 1.2);
+  return x && (score(x) > 0.4 || Math.random() < 0.5) ? x : "skip";
+}
+
+// ── ME ──────────────────────────────────────────────────────────────────────────────
+let myName = "", myColor = 0, dropped = false;
+try { myName = localStorage.getItem("mpa-name") || ""; } catch {}
+if (!myName) myName = pick(FRIENDLY) + " " + (10 + Math.floor(Math.random() * 90));
+let myRole = null, rolesRaw = null, opening = false;      // { g, r, w } once my sealed role is opened
+let myWhisper = null, whisperRaw = null, openingW = false; // wolves: { g, n, p: {wolf: target} }; seer: { g, k }
+let myPeeks = {}, myPick = null, myVote = "", myGame = 0;  // what I saw as seer, who I tapped tonight, my vote
+const myRoleIn = (g) => (g && myRole && myRole.g === g.id ? myRole.r : "");
+
+function myTick(g) {
+  if (g.id !== myGame) { myGame = g.id; myPeeks = {}; myPick = null; myVote = ""; }
+  openRole(g); openWhisper(g);
+  if (g.ph !== "day") myVote = "";
+}
+function openRole(g) {
+  const raw = S.shared.roles;
+  if (raw === rolesRaw || opening) return;
+  const R = parse(raw, null);
+  if (!R || R.g !== g.id || !R.box || !R.box[net.sessionId]) { if (!R || R.g === g.id) rolesRaw = raw; return; }
+  opening = true;
+  Seal.open(R.pk, R.box[net.sessionId]).then((v) => { if (v && v.g === g.id) myRole = v; rolesRaw = raw; }).finally(() => { opening = false; });
+}
+function openWhisper(g) {
+  const raw = S.shared.whisper;
+  if (raw === whisperRaw || openingW) return;
+  const R = parse(raw, null);
+  if (!R || R.g !== g.id || !R.box || !R.box[net.sessionId]) { whisperRaw = raw; return; }
+  openingW = true;
+  Seal.open(R.pk, R.box[net.sessionId]).then((v) => {
+    whisperRaw = raw;
+    if (!v || v.g !== g.id) return;
+    myWhisper = v;
+    if (v.k) { for (const id of Object.keys(v.k)) if (!myPeeks[id]) peekFx(id, v.k[id]); Object.assign(myPeeks, v.k); }
+  }).finally(() => { openingW = false; });
+}
+/** What I'd tell a new host about myself. */
+const mySecret = (g) => ({ g: g.id, r: myRole.r, w: myRole.w, k: myPeeks, p: myPick && myPick.g === g.id && myPick.n === g.n ? { n: myPick.n, t: myPick.t } : null });
+/** Who I can tap right now, and what it means. */
+function tapMode(g) {
+  if (!g || !alive(g, net.sessionId) || ATTRACT) return "";
+  if (g.ph === "night" && Date.now() >= nightOpensAt(g) && myRoleIn(g)) return myRoleIn(g) === "seer" && myPick && myPick.n === g.n ? "" : myRoleIn(g);
+  if (g.ph === "day" && Date.now() >= g.votesAt && !g.votes[net.sessionId] && !myVote) return "vote";
+  return "";
+}
+function canTap(g, id) {
+  const m = tapMode(g);
+  return !!m && id !== net.sessionId && alive(g, id) && !(m === "wolf" && myRole.w.includes(id));
+}
+function tapPlayer(id) {
+  const g = game();
+  if (!canTap(g, id)) return;
+  if (g.ph === "night") {
+    myPick = { g: g.id, n: g.n, t: id };
+    sendAct({ n: g.n, t: id });
+    tone(myRoleIn(g) === "wolf" ? 140 : 620, 160, myRoleIn(g) === "wolf" ? "sawtooth" : "sine", 0.05);
+  } else castVote(id);
+}
+/** A night tap, sealed to the host so nobody can tell a bite from a look from a hunch. */
+async function sendAct(d) {
+  if (isHost()) return onAct(net.sessionId, d);
+  const to = livePlayers()[0], pk = pkOf(to);
+  if (pk) net.send("act", { to, box: await Seal.seal(pk, d) });
+}
+function castVote(target) {
+  const g = game();
+  if (!g || g.ph !== "day" || !alive(g, net.sessionId) || g.votes[net.sessionId] || myVote || Date.now() < g.votesAt) return;
+  myVote = target;
+  toHost("vote", { t: target });
+  tone(440, 90);
+}
+/** When the host changes, hand my role (and what I saw / picked tonight) to the new one, sealed. */
+let lastHost = "";
+function watchHost() {
+  const h = livePlayers()[0];
+  if (h === lastHost) return;
+  lastHost = h;
+  if (h && h !== net.sessionId) resendRole(h);
+}
+async function resendRole(to) {
+  const g = game(), pk = pkOf(to);
+  if (!g || !pk || myRole?.g !== g.id || net.offline) return;
+  net.send("role", { to, box: await Seal.seal(pk, mySecret(g)) });
+}
+
+// ── DRAW ────────────────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const cv = $("game"), ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const RING = { cx: 0, cy: 0, rx: 100, ry: 60, s: 30, hz: 100 }; // the circle of villagers around the fire
+const FIELD = { x: 0, y: 0, w: 0, h: 0 };                         // the part of the screen not under the chat panel
+/** Size everything from the viewport: the chat panel goes right (wide) or at the bottom (tall). */
+function fit() {
+  DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  const side = $("side"), wide = W >= 720 && W > H * 1.1;
+  if (ATTRACT) Object.assign(FIELD, { x: 0, y: 0, w: W, h: H });
+  else if (wide) {
+    const sw = Math.round(Math.min(360, W * 0.34));
+    side.className = "right"; Object.assign(side.style, { left: W - sw + "px", top: "0px", width: sw + "px", height: H + "px" });
+    Object.assign(FIELD, { x: 0, y: 0, w: W - sw, h: H });
+  } else {
+    const sh = Math.round(Math.max(210, Math.min(320, H * 0.37)));
+    side.className = "bottom"; Object.assign(side.style, { left: "0px", top: H - sh + "px", width: W + "px", height: sh + "px" });
+    Object.assign(FIELD, { x: 0, y: 0, w: W, h: H - sh + 14 });
+  }
+  $("net").style.bottom = !ATTRACT && !wide ? H - parseFloat(side.style.top) + 6 + "px" : ""; // just above the chat panel on phones
+  const top = 50, fh = FIELD.h - top;
+  RING.s = Math.max(20, Math.min(44, Math.min(FIELD.w, fh) / 10.5));
+  RING.cx = FIELD.x + FIELD.w / 2;
+  RING.rx = Math.min(FIELD.w * 0.38, fh * 0.64);
+  RING.ry = Math.min(RING.rx * 0.6, fh * 0.29);
+  RING.cy = top + fh * 0.56;
+  RING.hz = Math.max(top, RING.cy - RING.ry - RING.s * 2.3);
+  Object.assign($("msg").style, { left: RING.cx - RING.rx * 0.95 + "px", width: RING.rx * 1.9 + "px", top: RING.cy - RING.ry * 0.62 - 18 + "px" });
+}
+addEventListener("resize", fit); addEventListener("orientationchange", fit);
+
+const STARS = Array.from({ length: 120 }, () => ({ x: Math.random(), y: Math.random(), z: 0.3 + Math.random() * 0.7, p: Math.random() * 7 }));
+const HOUSES = [0.08, 0.2, 0.31, 0.66, 0.78, 0.9].map((x, i) => ({ x, w: 0.05 + (i % 3) * 0.012, h: 0.6 + (i % 2) * 0.3 }));
+const PINES = [0.02, 0.05, 0.14, 0.26, 0.37, 0.6, 0.72, 0.85, 0.95, 0.98].map((x, i) => ({ x, h: 0.9 + ((i * 7) % 5) / 6 }));
+const hexRgb = new Map();
+/** Blend two #rrggbb colors: t = 0 → a, 1 → b. */
+function mix(a, b, t) {
+  const p = (h) => hexRgb.get(h) || (hexRgb.set(h, [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))), hexRgb.get(h));
+  const A = p(a), B = p(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`;
+}
+const hashStr = (s) => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
+const ellipse = (x, y, rx, ry) => { ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2); };
+const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+let dayK = 0.4; // 0 = deep night, 1 = full day; eased toward the phase's light
+
+/** The sky, moon and sun, the far village and pines, the ground and the clearing. */
+function drawScene(now) {
+  const k = dayK, hz = RING.hz;
+  const sky = ctx.createLinearGradient(0, 0, 0, hz + 30);
+  sky.addColorStop(0, mix("#070b26", "#5aa8ec", k)); sky.addColorStop(1, mix("#2b2f63", "#ffd6a0", k));
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, hz + 30);
+  if (k < 0.95) for (const s of STARS) {
+    ctx.globalAlpha = (1 - k) * s.z * (0.55 + 0.45 * Math.sin(now / 700 + s.p));
+    ctx.fillStyle = "#fff"; ctx.fillRect(s.x * W, s.y * hz, s.z * 2, s.z * 2);
+  }
+  ctx.globalAlpha = 1;
+  const mr = Math.max(14, Math.min(30, hz * 0.22)), mx = W * 0.8, my = hz * 0.42 + k * hz * 0.7;
+  if (k < 0.98) {
+    ctx.globalAlpha = 1 - k; ctx.fillStyle = "#fff6d6"; ctx.shadowColor = "#fff6d6"; ctx.shadowBlur = 30; ellipse(mx, my, mr, mr); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = "#e6dcb4"; ellipse(mx - mr * 0.3, my - mr * 0.2, mr * 0.22, mr * 0.22); ctx.fill(); ellipse(mx + mr * 0.35, my + mr * 0.3, mr * 0.14, mr * 0.14); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (k > 0.02) { ctx.globalAlpha = k; ctx.fillStyle = "#fff0a8"; ctx.shadowColor = "#ffd36b"; ctx.shadowBlur = 40; ellipse(W * 0.2, hz * (1.1 - k * 0.75), mr * 1.15, mr * 1.15); ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1; }
+  // far hill with houses
+  ctx.fillStyle = mix("#141a3c", "#7fae6c", k);
+  ctx.beginPath(); ctx.moveTo(0, hz + 30);
+  for (let x = 0; x <= W; x += 16) ctx.lineTo(x, hz - 6 - Math.sin(x / W * 5 + 1) * 10 - Math.sin(x / W * 13) * 4);
+  ctx.lineTo(W, hz + 30); ctx.fill();
+  for (const h of HOUSES) {
+    const x = h.x * W, w = Math.max(18, h.w * Math.min(W, 900)), hh = w * h.h, y = hz - 4 - Math.sin(h.x * 5 + 1) * 10;
+    ctx.fillStyle = mix("#1e2550", "#d9c6a0", k); ctx.fillRect(x - w / 2, y - hh, w, hh);
+    ctx.fillStyle = mix("#12173a", "#a8553f", k); ctx.beginPath(); ctx.moveTo(x - w * 0.62, y - hh); ctx.lineTo(x, y - hh - w * 0.55); ctx.lineTo(x + w * 0.62, y - hh); ctx.fill();
+    ctx.fillStyle = k < 0.6 ? `rgba(255,205,110,${0.9 - k})` : "#5a4a3a"; ctx.fillRect(x - w * 0.18, y - hh * 0.62, w * 0.22, hh * 0.28);
+  }
+  // near ground
+  ctx.fillStyle = mix("#0e1430", "#5f9653", k);
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 16) ctx.lineTo(x, hz + 12 - Math.sin(x / W * 4 + 2) * 6);
+  ctx.lineTo(W, H); ctx.fill();
+  for (const p of PINES) { // pines along the horizon
+    const x = p.x * W, h = Math.min(RING.s * 2.2, hz * 0.8) * p.h, y = hz + 16 - Math.sin(p.x * 4 + 2) * 6;
+    ctx.fillStyle = mix("#0a1026", "#2f6a3f", k);
+    for (let i = 0; i < 3; i++) { const w = h * (0.42 - i * 0.09), yy = y - i * h * 0.26; ctx.beginPath(); ctx.moveTo(x - w, yy); ctx.lineTo(x, yy - h * 0.5); ctx.lineTo(x + w, yy); ctx.fill(); }
+  }
+  ctx.fillStyle = mix("#221f36", "#c9ab7c", k); ellipse(RING.cx, RING.cy + RING.s * 0.35, RING.rx * 1.28, RING.ry * 1.42 + RING.s * 0.6); ctx.fill();
+  ctx.fillStyle = mix("#1b1a2e", "#b8996c", k); ellipse(RING.cx, RING.cy + RING.s * 0.35, RING.rx * 1.1, RING.ry * 1.22 + RING.s * 0.4); ctx.fill();
+}
+/** The campfire in the middle: big and bright at night, small with smoke by day. */
+function drawFire(now) {
+  const { cx, cy, s } = RING, f = s * (1.05 - dayK * 0.45);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, RING.rx * 1.2);
+  glow.addColorStop(0, `rgba(255,150,60,${0.42 - dayK * 0.3})`); glow.addColorStop(1, "rgba(255,120,40,0)");
+  ctx.fillStyle = glow; ellipse(cx, cy, RING.rx * 1.2, RING.ry * 1.5); ctx.fill();
+  ctx.restore();
+  for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; ctx.fillStyle = i % 2 ? "#5b5f6d" : "#4a4e5a"; ellipse(cx + Math.cos(a) * s * 0.72, cy + Math.sin(a) * s * 0.26 + s * 0.08, s * 0.17, s * 0.11); ctx.fill(); }
+  ctx.fillStyle = "#6e4426";
+  for (const r of [-0.45, 0.45]) { ctx.save(); ctx.translate(cx, cy + s * 0.05); ctx.rotate(r); rr(-s * 0.6, -s * 0.09, s * 1.2, s * 0.18, s * 0.09); ctx.fill(); ctx.restore(); }
+  for (const [col, size, ph] of [["#ff4d1f", 1, 0], ["#ff9a1f", 0.72, 1.7], ["#ffe36b", 0.44, 3.1]]) {
+    const h = f * size * (1.1 + 0.14 * Math.sin(now / 85 + ph) + 0.06 * Math.sin(now / 37 + ph)), w = f * size * 0.5, tip = Math.sin(now / 120 + ph) * w * 0.35;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cx - w, cy);
+    ctx.quadraticCurveTo(cx - w * 1.05, cy - h * 0.55, cx + tip, cy - h * 1.35); ctx.quadraticCurveTo(cx + w * 1.05, cy - h * 0.55, cx + w, cy); ctx.fill();
+  }
+}
+
+let SEATS = []; // this frame's villagers: {id, n, c, b, x, y, sc}
+/** Seats around the fire, turned so my own seat is at the front. */
+function layoutSeats(g) {
+  const list = g && g.ph !== "lobby" && g.ros.length ? g.ros : humans().map((i) => ({ i, n: nameOf(i), c: colorOf(i) }));
+  const n = list.length, mine = Math.max(0, list.findIndex((r) => r.i === net.sessionId));
+  SEATS = list.map((r, k) => {
+    const a = Math.PI / 2 + ((k - mine) / Math.max(1, n)) * Math.PI * 2, y = RING.cy + Math.sin(a) * RING.ry;
+    return { id: r.i, n: r.n, c: r.c, b: !!r.b, x: RING.cx + Math.cos(a) * RING.rx, y, sc: RING.s * (0.84 + 0.16 * (y - RING.cy + RING.ry) / (2 * RING.ry || 1)) };
+  });
+}
+const seatPos = (id) => SEATS.find((s) => s.id === id);
+/** A hooded villager. eyes: "open" | "closed" | "wolf" (glowing). */
+function drawFolk(s, now, o) {
+  const sc = s.sc, bob = Math.sin(now / 650 + (hashStr(s.id) % 7)) * sc * 0.025, shake = o.shake ? Math.sin(now / 18) * o.shake : 0;
+  ctx.save(); ctx.translate(s.x + shake, s.y); ctx.globalAlpha = o.alpha ?? 1;
+  ctx.fillStyle = "rgba(0,0,0,.32)"; ellipse(0, sc * 0.62, sc * 0.55, sc * 0.15); ctx.fill();
+  if (o.ring) { ctx.strokeStyle = o.ring; ctx.lineWidth = 3; ellipse(0, sc * 0.62, sc * 0.78, sc * 0.24); ctx.stroke(); }
+  ctx.translate(0, bob);
+  ctx.fillStyle = hsl(s.c, -14); rr(-sc * 0.5, -sc * 0.26, sc, sc * 0.9, [sc * 0.46, sc * 0.46, sc * 0.16, sc * 0.16]); ctx.fill();
+  ctx.fillStyle = hsl(s.c); rr(-sc * 0.34, -sc * 0.2, sc * 0.68, sc * 0.82, [sc * 0.32, sc * 0.32, sc * 0.1, sc * 0.1]); ctx.fill();
+  ctx.fillStyle = hsl(s.c, -24); ellipse(0, -sc * 0.52, sc * 0.43, sc * 0.43); ctx.fill();
+  ctx.fillStyle = SKIN[hashStr(s.id) % SKIN.length]; ellipse(0, -sc * 0.47, sc * 0.3, sc * 0.3); ctx.fill();
+  const ey = -sc * 0.5, ex = sc * 0.12;
+  if (o.eyes === "closed") {
+    ctx.strokeStyle = "#2a1e1a"; ctx.lineWidth = Math.max(1.2, sc * 0.045);
+    for (const d of [-1, 1]) { ctx.beginPath(); ctx.arc(d * ex, ey, sc * 0.06, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+  } else if (o.eyes === "wolf") {
+    ctx.fillStyle = "#ff3048"; ctx.shadowColor = "#ff2040"; ctx.shadowBlur = sc * 0.5;
+    for (const d of [-1, 1]) { ellipse(d * ex, ey, sc * 0.07, sc * 0.05); ctx.fill(); }
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = "#2a1e1a";
+    const blink = (now / 1000 + (hashStr(s.id) % 50) / 10) % 4.2 < 0.12;
+    for (const d of [-1, 1]) { ellipse(d * ex, ey, sc * 0.05, blink ? sc * 0.01 : sc * 0.055); ctx.fill(); }
+  }
+  if (o.talk) { ctx.fillStyle = "#5a2a2a"; ellipse(0, -sc * 0.33, sc * 0.08, sc * (0.03 + 0.04 * Math.abs(Math.sin(now / 90)))); ctx.fill(); }
+  ctx.restore();
+}
+/** A gravestone with the role that was revealed; `rise` 0→1 grows it out of the ground. */
+function drawStone(s, role, rise) {
+  const sc = s.sc;
+  ctx.save(); ctx.translate(s.x, s.y + sc * 0.62); ctx.scale(1, Math.max(0.01, rise));
+  ctx.fillStyle = "rgba(0,0,0,.3)"; ellipse(0, 0, sc * 0.5, sc * 0.13); ctx.fill();
+  ctx.fillStyle = mix("#3a3f4f", "#7d8494", dayK); rr(-sc * 0.38, -sc * 1.05, sc * 0.76, sc * 1.05, [sc * 0.38, sc * 0.38, 3, 3]); ctx.fill();
+  ctx.fillStyle = mix("#4c5266", "#9aa1b0", dayK); rr(-sc * 0.3, -sc * 0.97, sc * 0.6, sc * 0.92, [sc * 0.3, sc * 0.3, 2, 2]); ctx.fill();
+  ctx.fillStyle = ROLE[role]?.color || "#ccc"; ctx.fillRect(-sc * 0.3, -sc * 0.3, sc * 0.6, sc * 0.1);
+  ctx.fillStyle = "#2a2e3a"; ctx.font = `800 ${Math.round(sc * 0.24)}px system-ui, sans-serif`; ctx.textAlign = "center"; ctx.fillText("RIP", 0, -sc * 0.55);
+  ctx.restore();
+}
+/** Claw marks across a villager (the wolves' pick, or last night's victim). */
+function drawClaws(s, alpha, now) {
+  const sc = s.sc;
+  ctx.save(); ctx.translate(s.x, s.y - sc * 0.25); ctx.globalAlpha = alpha; ctx.strokeStyle = "#ff3048"; ctx.lineWidth = Math.max(2, sc * 0.08); ctx.lineCap = "round";
+  ctx.shadowColor = "#ff2040"; ctx.shadowBlur = 8;
+  for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(-sc * 0.42 + i * sc * 0.2, -sc * 0.5); ctx.quadraticCurveTo(i * sc * 0.2, -sc * 0.1, sc * 0.3 + i * sc * 0.2, sc * 0.45); ctx.stroke(); }
+  ctx.restore();
+}
+
+const deathAt = new Map(), voteAt = new Map(), bubbles = new Map(), peekAt = new Map(); // effect start times
+let hover = "";
+function draw(g, now, dt) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawScene(now);
+  const ph = g ? g.ph : "lobby", night = ph === "night" || (ph === "dawn" && now - phaseAt < 900), mode = tapMode(g);
+  const items = SEATS.map((s) => ({ y: s.y, f: () => drawSeat(g, s, now, night, mode) }));
+  items.push({ y: RING.cy, f: () => drawFire(now) });
+  items.sort((a, b) => a.y - b.y).forEach((it) => it.f());
+  if (g && (ph === "day" || ph === "verdict")) drawVotes(g, now);
+  drawParticles(dt);
+  const veil = ctx.createRadialGradient(RING.cx, RING.cy, RING.ry * 0.6, RING.cx, RING.cy, Math.max(W, H) * 0.75);
+  veil.addColorStop(0, "rgba(4,6,22,0)"); veil.addColorStop(1, `rgba(4,6,22,${0.62 * (1 - dayK)})`);
+  ctx.fillStyle = veil; ctx.fillRect(0, 0, W, H);
+  for (const s of SEATS) drawLabel(g, s, now);
+  drawBubbles(now);
+}
+/** Is this villager a wolf as far as I can tell? (My pack, what I saw as seer, or the preview.) */
+function shownWolf(g, id) {
+  if (!g || g.ph === "lobby") return false;
+  if (g.ph === "over" && g.reveal) return g.reveal[id] === "wolf";
+  if (ATTRACT) return host.roles.get(id) === "wolf";
+  return (myRoleIn(g) === "wolf" && myRole.w.includes(id)) || myPeeks[id] === "wolf";
+}
+function drawSeat(g, s, now, night, mode) {
+  const d = g && g.ph !== "lobby" ? deadEntry(g, s.id) : null, since = now - (deathAt.get(s.id) ?? -1e9);
+  if (d && since > 900) return drawStone(s, d[1], Math.min(1, (since - 900) / 300) * (1 + 0.15 * Math.sin(Math.min(1, (since - 900) / 300) * Math.PI)));
+  const wolfy = shownWolf(g, s.id), b = bubbles.get(s.id), talk = !!b && now - b.at < 2600 && !night;
+  const mine = myTargetOf(g) === s.id, can = canTap(g, s.id), hot = hover === s.id && can;
+  const ring = hot ? "#ffffff" : mine ? (g.ph === "night" && myRoleIn(g) === "wolf" ? "#ff5b6e" : "#ffd166") : can ? `rgba(255,255,255,${0.25 + 0.2 * Math.sin(now / 260)})` : null;
+  drawFolk(s, now, { eyes: wolfy && night ? "wolf" : night || (d && since < 900) ? "closed" : "open", talk, alpha: d ? 1 - since / 900 : 1, shake: d ? s.sc * 0.08 : 0, ring });
+  if (g && g.ph === "night" && (ATTRACT || myRoleIn(g) === "wolf")) { // the pack's picks tonight
+    const picks = ATTRACT ? [...host.picks.values()] : Object.values(myWhisper && myWhisper.n === g.n ? myWhisper.p : {});
+    if (picks.includes(s.id) || (mine && myRoleIn(g) === "wolf")) drawClaws(s, 0.55 + 0.3 * Math.sin(now / 140), now);
+  }
+  if (d && since < 900 && d[2] === "w") drawClaws(s, 1 - since / 900, now);
+}
+/** What I picked: tonight's tap, or today's vote. */
+function myTargetOf(g) {
+  if (!g) return "";
+  if (g.ph === "night") return myPick && myPick.g === g.id && myPick.n === g.n ? myPick.t : "";
+  if (g.ph === "day" || g.ph === "verdict") return g.votes[net.sessionId] || myVote;
+  return "";
+}
+/** Name, revealed role, vote count, what the seer saw, my hunch. Drawn over the night veil. */
+function drawLabel(g, s, now) {
+  const sc = s.sc, d = g && g.ph !== "lobby" ? deadEntry(g, s.id) : null, me = s.id === net.sessionId;
+  const y = s.y + sc * 0.62 + 15;
+  ctx.textAlign = "center"; ctx.lineWidth = 3; ctx.strokeStyle = "#000a";
+  ctx.font = `700 ${Math.round(Math.max(11, sc * 0.32))}px system-ui, sans-serif`;
+  const label = s.n.length > 11 ? s.n.slice(0, 10) + "…" : s.n;
+  ctx.strokeText(label, s.x, y); ctx.fillStyle = me ? "#ffd166" : d ? "#ffffff99" : "#fff"; ctx.fillText(label, s.x, y);
+  const role = d ? d[1] : g && g.ph === "over" && g.reveal ? g.reveal[s.id] : "";
+  const tag = role ? ROLE[role].name : myPeeks[s.id] ? (myPeeks[s.id] === "wolf" ? "Werewolf!" : "Not a wolf") : g && myRoleIn(g) === "wolf" && myRole.w.includes(s.id) && !me ? "Your pack" : me && myRoleIn(g) ? "You" : "";
+  if (tag) {
+    ctx.font = `800 ${Math.round(Math.max(10, sc * 0.27))}px system-ui, sans-serif`;
+    ctx.strokeText(tag, s.x, y + 14);
+    ctx.fillStyle = role ? ROLE[role].color : myPeeks[s.id] === "wolf" || tag === "Your pack" ? ROLE.wolf.color : myPeeks[s.id] ? ROLE.villager.color : "#ffd166";
+    ctx.fillText(tag, s.x, y + 14);
+  }
+  const pa = peekAt.get(s.id);
+  if (pa && now - pa < 1600) { // the seer's look: an eye opening over them
+    const t = (now - pa) / 1600, r = sc * (0.5 + t * 0.6);
+    ctx.save(); ctx.globalAlpha = 1 - t; ctx.strokeStyle = ROLE.seer.color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(s.x, s.y - sc * 0.5, r, r * 0.55, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
+  if (g && (g.ph === "day" || g.ph === "verdict")) {
+    const n = votesOn(g, s.id);
+    if (n) {
+      const bx = s.x + sc * 0.48, by = s.y - sc * 0.95;
+      ctx.fillStyle = "#ff5b6e"; ellipse(bx, by, 11, 11); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.font = "900 13px system-ui, sans-serif"; ctx.fillText(n, bx, by + 4.5);
+    }
+    if (g.votes[s.id] === "skip") { ctx.font = "700 11px system-ui, sans-serif"; ctx.fillStyle = "#cfd3ef"; ctx.fillText("skipped", s.x, s.y - sc * 1.05); }
+  }
+}
+/** An arrow from each voter to who they voted for. */
+function drawVotes(g, now) {
+  for (const [from, to] of Object.entries(g.votes)) {
+    const a = seatPos(from), b = seatPos(to);
+    if (!a || !b) continue;
+    if (!voteAt.has(from + to)) voteAt.set(from + to, now);
+    const t = Math.min(1, (now - voteAt.get(from + to)) / 350), ease = 1 - (1 - t) ** 3;
+    const ax = a.x, ay = a.y - a.sc * 0.35, bx0 = b.x, by0 = b.y - b.sc * 0.35, len = Math.hypot(bx0 - ax, by0 - ay) || 1;
+    const bx = bx0 - ((bx0 - ax) / len) * b.sc * 0.55, by = by0 - ((by0 - ay) / len) * b.sc * 0.55;
+    const mx = (ax + bx) / 2 + (RING.cx - (ax + bx) / 2) * -0.15, my = (ay + by) / 2 - len * 0.12;
+    const ex = ax + (bx - ax) * ease, ey = ay + (by - ay) * ease;
+    ctx.save(); ctx.strokeStyle = hsl(seatIn(g, from)?.c ?? 0, 8, 0.85); ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(ax + (mx - ax) * ease, ay + (my - ay) * ease, ex, ey); ctx.stroke();
+    if (t >= 1) { const ang = Math.atan2(by - my, bx - mx); ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - Math.cos(ang - 0.45) * 11, by - Math.sin(ang - 0.45) * 11); ctx.lineTo(bx - Math.cos(ang + 0.45) * 11, by - Math.sin(ang + 0.45) * 11); ctx.fill(); }
+    ctx.restore();
+  }
+}
+/** Speech bubbles over whoever just spoke. */
+function drawBubbles(now) {
+  ctx.font = "600 13px system-ui, sans-serif"; ctx.textAlign = "left";
+  for (const [id, b] of bubbles) {
+    const s = seatPos(id), age = now - b.at;
+    if (!s || age > 4200) { if (age > 4200) bubbles.delete(id); continue; }
+    if (!b.lines) { b.lines = []; let line = ""; for (const w of b.text.split(" ")) { const tryL = line ? line + " " + w : w; if (ctx.measureText(tryL).width > 150 && line) { b.lines.push(line); line = w; } else line = tryL; } b.lines.push(line); b.lines = b.lines.slice(0, 3); b.w = Math.max(...b.lines.map((l) => ctx.measureText(l).width)); }
+    const pop = Math.min(1, age / 160), a = age > 3700 ? (4200 - age) / 500 : 1, bw = b.w + 16, bh = b.lines.length * 16 + 10;
+    const x = Math.max(6, Math.min(W - bw - 6, s.x - bw / 2)), y = Math.max(54, s.y - s.sc * 1.12 - bh - 6);
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(s.x, y + bh); ctx.scale(0.7 + pop * 0.3, 0.7 + pop * 0.3); ctx.translate(-s.x, -(y + bh));
+    ctx.fillStyle = "#fffdf5"; rr(x, y, bw, bh, 9); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(s.x - 6, y + bh - 1); ctx.lineTo(s.x, y + bh + 7); ctx.lineTo(s.x + 6, y + bh - 1); ctx.fill();
+    ctx.fillStyle = "#24203a"; b.lines.forEach((l, i) => ctx.fillText(l, x + 8, y + 18 + i * 16));
+    ctx.restore();
+  }
+}
+const parts = [];
+function burst(x, y, color, n, speed = 160) { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = rnd(30, speed); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, color, r: rnd(2, 4.5) }); } }
+function drawParticles(dt) {
+  if (Math.random() < (0.55 - dayK * 0.35) * dt * 60) parts.push({ x: RING.cx + rnd(-RING.s * 0.3, RING.s * 0.3), y: RING.cy - RING.s * 0.4, vx: rnd(-12, 12), vy: rnd(-70, -35), life: 1, color: "#ffb347", r: rnd(1.2, 2.4), ember: 1 });
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.life -= dt * (p.ember ? 0.7 : 1.3); p.x += p.vx * dt; p.y += p.vy * dt;
+    if (!p.ember) { const k = Math.exp(-dt * 3); p.vx *= k; p.vy = p.vy * k + 120 * dt; } else p.vx += Math.sin(p.y / 20) * 36 * dt;
+    if (p.life <= 0) { parts.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, p.life * 1.4); ctx.fillStyle = p.color; ellipse(p.x, p.y, p.r * (p.ember ? 1 : p.life + 0.3), p.r * (p.ember ? 1 : p.life + 0.3)); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+/** Colors already in use: other players', and the bots' at the table. */
+function takenColors() {
+  const g = game(), bots = g && !seatIn(g, net.sessionId) ? g.ros.filter((r) => r.b).map((r) => r.c) : [];
+  return new Set([...Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => Number(p.c)), ...bots]);
+}
+/** Two players picked one color (they joined at once), or mine is a bot's: pick a free one (the later sessionId moves). */
+function fixColor() {
+  const g = game(), ps = S.entities.players || {};
+  const clash = Object.entries(ps).some(([id, p]) => id < net.sessionId && Number(p.c) === myColor) || (g && !seatIn(g, net.sessionId) && g.ros.some((r) => r.b && r.c === myColor));
+  if (!clash) return;
+  const taken = takenColors(), free = COLORS.findIndex((_, i) => !taken.has(i));
+  if (free < 0) return;
+  myColor = free; net.me.set("c", myColor);
+}
+
+// ── SCREENS ─────────────────────────────────────────────────────────────────────────
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const roleSpan = (r) => `<span class="${r}">${ROLE[r].name}</span>`;
+const secs = (ms) => Math.max(0, Math.ceil(ms / 1000));
+let AC = null;
+function unlockAudio() { if (!AC && !ATTRACT) try { AC = new AudioContext(); } catch {} }
+function tone(f, ms, type = "sine", vol = 0.05, f2 = 0) {
+  if (!AC) return;
+  const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime;
+  o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + ms / 1000);
+  gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+  o.connect(gn).connect(AC.destination); o.start(t); o.stop(t + ms / 1000);
+}
+const howl = () => { tone(320, 500, "sine", 0.05, 620); setTimeout(() => tone(620, 900, "sine", 0.04, 380), 480); };
+function peekFx(id, what) { peekAt.set(id, performance.now()); tone(what === "wolf" ? 220 : 880, 260, "triangle", 0.06); }
+
+/** Sounds, sparks and timers for what just changed in state (effects only: nothing here decides anything). */
+const seenFx = { ph: "", gid: -1, dead: new Set(), chat: { g: -1, c: 0 } };
+let phaseAt = 0;
+function effects(g, now) {
+  const key = g.id + ":" + g.ph + ":" + g.n, first = seenFx.gid === -1;
+  if (key !== seenFx.ph) {
+    seenFx.ph = key; phaseAt = now;
+    if (!first) {
+      if (g.ph === "night") { howl(); bubbles.clear(); }
+      if (g.ph === "dawn") g.night && g.night.i ? tone(90, 500, "sawtooth", 0.07, 50) : tone(660, 300, "triangle", 0.05);
+      if (g.ph === "day") { tone(523, 160, "triangle", 0.05); setTimeout(() => tone(784, 220, "triangle", 0.05), 150); }
+      if (g.ph === "verdict") tone(110, 900, "sine", 0.09, 70);
+      if (g.ph === "over") tone(sideWon(g) ? 660 : 220, 600, "triangle", 0.07);
+    }
+  }
+  if (g.id !== seenFx.gid) { seenFx.gid = g.id; seenFx.dead = new Set(first ? g.dead.map((d) => d[0]) : []); deathAt.clear(); voteAt.clear(); }
+  for (const d of g.dead) {
+    if (seenFx.dead.has(d[0])) continue;
+    seenFx.dead.add(d[0]); deathAt.set(d[0], now);
+    const s = seatPos(d[0]);
+    if (s) { burst(s.x, s.y - s.sc * 0.3, d[2] === "w" ? "#ff3048" : "#c8cbe0", 34, 200); shakeUntil = now + 400; }
+  }
+  const c = shared("chat", null);
+  if (c && (c.g !== seenFx.chat.g || c.c !== seenFx.chat.c)) {
+    const fresh = first ? 0 : Math.min(c.l.length, c.g === seenFx.chat.g ? c.c - seenFx.chat.c : c.c);
+    for (const [id, text] of c.l.slice(c.l.length - fresh)) if (id) { bubbles.set(id, { text, at: now }); tone(900 + Math.random() * 300, 60, "sine", 0.02); }
+    seenFx.chat = { g: c.g, c: c.c };
+  }
+}
+let shakeUntil = 0;
+const sideWon = (g) => { const r = g.reveal && g.reveal[net.sessionId]; return !!r && (r === "wolf") === (g.win === "wolves"); };
+
+function phaseText(g) {
+  const t = Date.now();
+  return { lobby: `LOBBY · ${secs(g.endsAt - t)}s`, night: `NIGHT ${g.n} · ${secs(g.endsAt - t)}s`, dawn: "DAWN",
+    day: t < g.votesAt ? `DAY ${g.n} · talk ${secs(g.votesAt - t)}s` : `DAY ${g.n} · vote ${secs(g.endsAt - t)}s`, verdict: "VERDICT", over: "GAME OVER" }[g.ph] || "";
+}
+function roleText(g) {
+  const r = myRoleIn(g);
+  if (!r) return g.ph !== "lobby" && !seatIn(g, net.sessionId) ? "Watching · you'll play the next game" : "";
+  let extra = "";
+  if (r === "wolf") { const pack = myRole.w.filter((x) => x !== net.sessionId).map((x) => esc(nameIn(g, x))); extra = pack.length ? ` · pack: ${pack.join(", ")}` : " · you hunt alone"; }
+  if (r === "seer") { const seen = Object.entries(myPeeks).map(([x, v]) => `${esc(nameIn(g, x))} <span class="${v === "wolf" ? "wolf" : "villager"}">${v === "wolf" ? "WOLF" : "good"}</span>`); extra = seen.length ? " · " + seen.join(", ") : ""; }
+  return `${roleSpan(r)}${extra}${alive(g, net.sessionId) ? "" : " · ghost"}`;
+}
+function banner(g) {
+  const t = Date.now(), me = seatIn(g, net.sessionId), r = myRoleIn(g);
+  if (g.ph === "lobby") return ATTRACT ? "" : `Night falls in ${secs(g.endsAt - t)}<small>Bots fill the empty seats. Up to ${CONFIG.maxPlayers} can play.</small>`;
+  if (g.ph === "night") {
+    if (!ATTRACT && t < nightOpensAt(g)) return !me ? "A game is on<small>You'll play the next one.</small>" : !r ? "Shhh…<small>Dealing roles</small>"
+      : `You are ${r === "villager" ? "a" : "the"} ${roleSpan(r)}<small>${ROLE[r].goal}</small>`;
+    return t < g.at + 1800 && g.n > 1 ? "Night falls…" : "";
+  }
+  if (g.ph === "dawn") {
+    const v = g.night && g.night.i, d = v && deadEntry(g, v);
+    return v ? `${esc(nameIn(g, v))} was taken in the night<small>${esc(nameIn(g, v))} was ${d[1] === "villager" ? "a" : "the"} ${roleSpan(d[1])}.</small>` : "A quiet night<small>Nobody was taken.</small>";
+  }
+  if (g.ph === "day") return t < g.at + 1800 ? `Day ${g.n}<small>Talk it out. Who is the werewolf?</small>` : t >= g.votesAt && t < g.votesAt + 1500 ? "Time to vote" : "";
+  if (g.ph === "verdict") {
+    const o = g.out || {}, n = o.i ? esc(nameIn(g, o.i)) : "";
+    if (!o.i) return `No one was banished<small>${o.tie ? "The vote was a tie." : o.k ? "The village skipped." : "Nobody voted."}</small>`;
+    return `The village banished ${n}<small>${t > g.at + 1300 ? `${n} was ${o.r === "villager" ? "a" : "the"} ${roleSpan(o.r)}${o.r === "wolf" ? "!" : "."}` : "&nbsp;"}</small>`;
+  }
+  return "";
+}
+function hint(g) {
+  const t = Date.now(), r = myRoleIn(g), me = seatIn(g, net.sessionId);
+  if (g.ph === "lobby") return "The first night falls soon. Bots fill the empty seats.";
+  if (g.ph === "over") return "";
+  if (!me) return "A game is on. Watch, and you'll play the next one.";
+  if (!alive(g, net.sessionId)) return "You're a ghost now. Watch quietly.";
+  if (g.ph === "night") {
+    if (t < nightOpensAt(g) || !r) return "Remember your role. Keep it secret.";
+    const p = myPick && myPick.n === g.n ? esc(nameIn(g, myPick.t)) : "";
+    if (r === "wolf") {
+      const mate = Object.entries(myWhisper && myWhisper.n === g.n ? myWhisper.p : {}).find(([w]) => w !== net.sessionId);
+      const pack = mate ? ` ${esc(nameIn(g, mate[0]))} wants ${esc(nameIn(g, mate[1]))}.` : "";
+      return (p ? `You hunt ${p}. Tap another to change.` : "Tap a villager to hunt tonight.") + pack;
+    }
+    if (r === "seer") return p ? `You looked at ${p}: ${myPeeks[myPick.t] === "wolf" ? "a WEREWOLF!" : myPeeks[myPick.t] ? "not a wolf." : "…"}` : "Tap a player to see if they are a werewolf.";
+    return p ? `Your hunch: ${p}. Sleep tight…` : "Tap who you suspect. Everyone taps at night, so nobody can tell who's who.";
+  }
+  if (g.ph === "day") {
+    if (t < g.votesAt) return `Talk it out. Voting opens in ${secs(g.votesAt - t)}s.`;
+    const v = g.votes[net.sessionId] || myVote;
+    return v ? (v === "skip" ? "You skipped. Waiting for the others…" : `You voted for ${esc(nameIn(g, v))}.`) : "Tap a player to vote them out, or skip.";
+  }
+  return "";
+}
+let chatRaw = null;
+function hud(g) {
+  const n = humans().length;
+  $("net").textContent = ATTRACT ? "" : net.offline ? "Offline: playing with bots" : dropped ? "Reconnecting…" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the village" : ""}`;
+  if (!g) return;
+  $("phase").textContent = phaseText(g);
+  const rt = ATTRACT ? "" : roleText(g);
+  $("role").hidden = !rt; if ($("role").innerHTML !== rt) $("role").innerHTML = rt;
+  const b = banner(g), html = b ? `<span class="b">${b}</span>` : "";
+  if ($("msg").innerHTML !== html) $("msg").innerHTML = html;
+  if (ATTRACT) return;
+  const h = hint(g);
+  if ($("hint").innerHTML !== h) $("hint").innerHTML = h;
+  const talk = canTalk(g, net.sessionId) && (g.ph === "lobby" || g.ph === "over" || !!seatIn(g, net.sessionId));
+  $("sayText").disabled = !talk; $("say").querySelector("button").disabled = !talk;
+  $("sayText").placeholder = talk ? "Say something…" : g.ph === "night" ? "Shh… the village sleeps" : !seatIn(g, net.sessionId) ? "Watching" : "Ghosts can't talk";
+  const voting = g.ph === "day" && Date.now() >= g.votesAt && alive(g, net.sessionId);
+  $("skip").hidden = !voting; $("skip").disabled = !!(g.votes[net.sessionId] || myVote); $("skip").classList.toggle("mine", (g.votes[net.sessionId] || myVote) === "skip");
+  $("lobby").hidden = g.ph !== "lobby" || voting;
+  if (S.shared.chat !== chatRaw) {
+    chatRaw = S.shared.chat;
+    const c = shared("chat", null) || { g: 0, c: 0, l: [] }, lines = c.g === g.id && c.l.length ? c.l : [["", "Say hi. Bots will chat back once the sun is up."]];
+    $("chat").innerHTML = lines.map(([id, text]) => id ? `<div><b style="color:${hsl(seatIn(g, id)?.c ?? colorOf(id), 12)}">${esc(seatIn(g, id)?.n || nameOf(id))}</b>${esc(text)}</div>` : `<div class="sys">${esc(text)}</div>`).join("");
+    $("chat").scrollTop = 1e6;
+  }
+  renderOver(g);
+}
+let overFor = -1, board = null;
+function renderOver(g) {
+  $("over").hidden = g.ph !== "over" || ATTRACT;
+  if (g.ph !== "over") return;
+  $("oTitle").innerHTML = g.win === "village" ? '<span class="villager">The village wins!</span>' : '<span class="wolf">The werewolves win!</span>';
+  $("oWhy").textContent = g.win === "village" ? "Every werewolf was found and banished." : "The wolves now match the village. Nobody is safe.";
+  $("oNext").textContent = `Next game in ${secs(g.endsAt - Date.now())}s`;
+  $("again").textContent = g.ready.includes(net.sessionId) ? "Ready ✓" : "Play again";
+  if (overFor === g.id) return;
+  overFor = g.id;
+  $("oRoles").innerHTML = g.ros.map((r) => { const role = g.reveal?.[r.i] || "villager"; return `<div><span class="dot" style="background:${hsl(r.c)}"></span>${esc(r.n)} · ${roleSpan(role)}</div>`; }).join("");
+  const mine = !!seatIn(g, net.sessionId), won = mine && sideWon(g), list = $("board");
+  $("oYou").textContent = !mine ? "" : won ? "You won! +1 on the board." : "Your side lost this one.";
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li>Loading the leaderboard…</li>";
+  (won ? board.submit(1, "inc").catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} win${e.score === 1 ? "" : "s"}</span></li>`).join("") : "<li>No wins yet. Be the first.</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+}
+
+// ── INPUT ───────────────────────────────────────────────────────────────────────────
+/** The villager under a screen point (or ""). */
+function seatAt(x, y) {
+  let hit = "", bd = Infinity;
+  for (const s of SEATS) { const d = Math.hypot(x - s.x, (y - (s.y - s.sc * 0.3)) * 0.8); if (d < s.sc * 0.95 && d < bd) { bd = d; hit = s.id; } }
+  return hit;
+}
+cv.addEventListener("pointermove", (e) => { hover = seatAt(e.clientX, e.clientY); cv.style.cursor = hover && canTap(game(), hover) ? "pointer" : "default"; });
+cv.addEventListener("pointerdown", (e) => { e.preventDefault(); unlockAudio(); const id = seatAt(e.clientX, e.clientY); if (id) tapPlayer(id); if (document.activeElement === $("sayText") && e.pointerType !== "mouse") $("sayText").blur(); });
+$("skip").addEventListener("click", () => castVote("skip"));
+$("say").addEventListener("submit", (e) => {
+  e.preventDefault(); unlockAudio();
+  const text = $("sayText").value.trim();
+  if (text) toHost("chat", { t: text });
+  $("sayText").value = "";
+});
+$("again").addEventListener("click", () => toHost("ready", { r: 1 }));
+$("name").addEventListener("change", () => {
+  myName = $("name").value.trim().slice(0, 14) || myName;
+  try { localStorage.setItem("mpa-name", myName); } catch {}
+  net && net.me.set("n", myName);
+});
+addEventListener("keydown", (e) => {
+  unlockAudio();
+  if (e.key === "Enter" && document.activeElement !== $("sayText") && !$("sayText").disabled) { e.preventDefault(); $("sayText").focus(); }
+  if (e.key === "Escape") document.activeElement.blur();
+});
+document.addEventListener("touchmove", (e) => { if (!e.target.closest("#chat")) e.preventDefault(); }, { passive: false });
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+let last = performance.now(), lastHb = 0, lastHud = 0;
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
+  watchHost();
+  if (isHost()) hostTick(); else host.was = false;
+  const g = game();
+  if (g) { myTick(g); effects(g, now); }
+  const ph = g ? g.ph : "lobby", light = { lobby: 0.3, night: 0, dawn: 0.75, day: 1, verdict: 0.8, over: 0.55 }[ph] ?? 0.3;
+  dayK += (light - dayK) * (1 - Math.exp(-dt * (ph === "dawn" ? 1.5 : 3)));
+  layoutSeats(g);
+  ctx.save();
+  if (now < shakeUntil) ctx.translate(Math.sin(now / 20) * 4, Math.cos(now / 26) * 3);
+  draw(g, now, dt);
+  ctx.restore();
+  if (now - lastHud > 120) { lastHud = now; if (g) hud(g); else hud(null); }
+  requestAnimationFrame(frame);
+}
+
+(async function start() {
+  if (ATTRACT) {
+    Object.assign(CONFIG, { seats: 8, lobbyMs: 200, introMs: 200, nightMs: 2000, hurryMs: 350, dawnMs: 1600, talkMs: 1100, voteMs: 2600, verdictMs: 1800, overMs: 3000,
+      botLines: [1, 1], botActMs: [250, 1200], botFakeSeer: 0.3 });
+    $("side").hidden = true;
+  }
+  fit();
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.onDisconnect(() => { dropped = true; $("net").textContent = "Reconnecting…"; });
+  net.onReconnect(() => { dropped = false; });
+  for (const [type, fn] of Object.entries(HANDLERS)) net.on(type, (msg, from) => { if (isHost() && msg) fn(from, msg); });
+  net.on("act", async (msg, from) => { // sealed to the host: only the host can open it
+    if (!msg || msg.to !== net.sessionId || !isHost()) return;
+    const d = await Seal.open(pkOf(from), msg.box);
+    if (d) onAct(from, d);
+  });
+  net.on("role", async (msg, from) => { // a player's own role, re-sent to a new host
+    if (!msg || msg.to !== net.sessionId) return;
+    const v = await Seal.open(pkOf(from), msg.box);
+    if (!v) return;
+    heard.set(from, v);
+    if (isHost()) learnRole(from, v);
+  });
+  net.on("who", (msg, from) => resendRole(from));
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }).leaderboard(CONFIG.board);
+  const pk = await Seal.init().catch(() => "");
+  const taken = takenColors();
+  myColor = COLORS.findIndex((_, i) => !taken.has(i));
+  if (myColor < 0) myColor = Math.floor(Math.random() * COLORS.length);
+  $("name").value = myName;
+  net.me.set({ n: myName, c: myColor, hb: Date.now(), pk });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
