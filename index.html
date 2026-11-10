@@ -1228,6 +1228,7 @@ document.addEventListener("touchmove", (e) => { if (!e.target.closest("#chat")) 
 // ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
 let last = performance.now(), lastHb = 0, lastHud = 0;
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
   if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
   watchHost();
@@ -1242,7 +1243,6 @@ function frame(now) {
   draw(g, now, dt);
   ctx.restore();
   if (now - lastHud > 120) { lastHud = now; if (g) hud(g); else hud(null); }
-  requestAnimationFrame(frame);
 }
 
 (async function start() {
