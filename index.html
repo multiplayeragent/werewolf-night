@@ -42,6 +42,7 @@
   .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
   #board { text-align: left; margin: 2px 0; padding-left: 26px; font-size: 14px; min-height: 30px; }
   #board li span { float: right; }
+  #board li.note { list-style: none; margin-left: -26px; text-align: center; color: var(--dim); } /* a message, not a ranked row */
   .card h3 { margin: 4px 0 0; font-size: 13px; color: var(--gold); text-align: left; }
 </style>
 <script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
@@ -60,7 +61,7 @@
 <div class="over" id="over" hidden><div class="card">
   <h2 id="oTitle"></h2><div id="oWhy"></div><div id="oYou" class="gold"></div>
   <div id="oRoles"></div>
-  <h3>Most wins</h3><ol id="board"><li>Loading…</li></ol>
+  <h3>Most wins</h3><ol id="board"><li class="note">Loading…</li></ol>
   <button class="go" id="again">Play again</button><div id="oNext"></div>
 </div></div>
 <script>
@@ -273,7 +274,7 @@ const Seal = {
 
 // ── GAME (HOST) ─────────────────────────────────────────────────────────────────────
 // What only the host knows: every role, the wolves' picks tonight, what each seer saw, the bots.
-const host = { last: null, was: false, gid: 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(),
+const host = { last: null, was: false, gid: 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(), known: new Map(),
   brains: new Map(), claims: new Set(), accused: new Map(), lastAccuser: new Map(), lastOut: null, plan: null,
   chat: { g: 0, c: 0, l: [] }, graceUntil: 0, needFill: false, dealing: false, sealing: false, rolesDirty: false, whisperDirty: false };
 const heard = new Map(); // roles other players re-sent to me, in case I become host: id -> {g, r, w, k, p}
@@ -320,7 +321,7 @@ async function deal(g) {
     host.roles = new Map(ros.map((r) => [r.i, "villager"]));
     order.slice(0, wolves).forEach((id) => host.roles.set(id, "wolf"));
     host.roles.set(order[wolves], "seer");
-    Object.assign(host, { gid: g.id, told: new Set(hs), peeks: new Map(), picks: new Map(), redealt: new Set(), brains: new Map(), claims: new Set(),
+    Object.assign(host, { gid: g.id, told: new Set(hs), peeks: new Map(), picks: new Map(), redealt: new Set(), known: new Map(), brains: new Map(), claims: new Set(),
       accused: new Map(), lastAccuser: new Map(), lastOut: null, plan: null, needFill: false });
     const box = await sealRoles(g.id, ros, null);
     if (!isHost() || game()?.id !== g.id || game()?.ph !== "lobby") return; // the room moved on while we sealed
@@ -464,7 +465,7 @@ function adopt() {
   host.graceUntil = performance.now() + (mid ? CONFIG.rejoinMs : 0);
   host.needFill = mid; host.plan = null;
   if (!g || host.gid !== g.id) { // I didn't run this game before: start from what players tell me
-    Object.assign(host, { gid: g ? g.id : 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(), brains: new Map(),
+    Object.assign(host, { gid: g ? g.id : 0, roles: new Map(), told: new Set(), peeks: new Map(), picks: new Map(), redealt: new Set(), known: new Map(), brains: new Map(),
       claims: new Set(), accused: new Map(), lastAccuser: new Map(), lastOut: null });
   }
   if (g && myRole && myRole.g === g.id) learn(net.sessionId, mySecret(g), g);
@@ -474,32 +475,40 @@ function adopt() {
 }
 function learn(id, v, g) {
   if (!seatIn(g, id) || !ROLE[v.r]) return;
-  host.roles.set(id, v.r); host.told.add(id);
-  if (v.r === "seer" && v.k) host.peeks.set(id, { ...v.k });
-  if (v.r === "wolf" && v.p && v.p.n === g.n) host.picks.set(id, v.p.t);
+  host.roles.set(id, v.r); host.told.add(id); host.redealt.delete(id);
+  if (v.r === "seer" && v.k) { host.peeks.set(id, { ...v.k }); for (const [x, s] of Object.entries(v.k)) host.known.set(x, s); } // what the seer saw stays true
+  if (v.r === "wolf") { for (const x of v.w || []) if (x !== id) host.known.set(x, "wolf"); if (v.p && v.p.n === g.n) host.picks.set(id, v.p.t); } // so does the pack
 }
-/** After a host change: revealed roles are facts, unknown ones are villagers, and the wolf and seer
- *  counts are made right by giving a missing role to a living bot (or taking an extra one back). */
+/** After a host change: revealed roles are facts, unknown ones are villagers, then fixRoles. */
 function fillRoles(g) {
   host.needFill = false;
   for (const d of g.dead) host.roles.set(d[0], d[1]);
   for (const r of g.ros) if (!host.roles.has(r.i)) host.roles.set(r.i, "villager");
-  const live = g.ros.filter((r) => alive(g, r.i)), bots = shuffle(live.filter((r) => r.b && !host.told.has(r.i)));
-  const count = (role) => live.filter((r) => roleOf(r.i) === role).length, seers = g.dead.some((d) => d[1] === "seer") ? 0 : 1;
-  for (const b of bots) if (count("wolf") > g.wl && roleOf(b.i) === "wolf") host.roles.set(b.i, "villager");
-  for (const b of bots) if (count("seer") > seers && roleOf(b.i) === "seer") host.roles.set(b.i, "villager");
-  for (const b of bots) if (count("wolf") < g.wl && roleOf(b.i) === "villager") { host.roles.set(b.i, "wolf"); host.redealt.add(b.i); }
-  for (const b of bots) if (count("seer") < seers && roleOf(b.i) === "villager") { host.roles.set(b.i, "seer"); host.redealt.add(b.i); }
+  fixRoles(g);
+}
+/** Make the living wolf and seer counts right, changing only bots nobody told me about: a bot a
+ *  wolf's pack or the seer's looks name as a wolf IS a wolf, a bot the seer saw as good never
+ *  becomes one, and a stand-in (`redealt`) is the first to give a role back. */
+function fixRoles(g) {
+  const live = g.ros.filter((r) => alive(g, r.i)), count = (role) => live.filter((r) => roleOf(r.i) === role).length;
+  const seers = g.dead.some((d) => d[1] === "seer") ? 0 : 1, known = (b) => host.known.get(b) || "";
+  const bots = shuffle(live.filter((r) => r.b && !host.told.has(r.i)).map((r) => r.i));
+  for (const b of bots) if (known(b) === "wolf") { host.roles.set(b, "wolf"); host.redealt.delete(b); }
+  for (const b of bots) if (known(b) === "good" && roleOf(b) === "wolf") host.roles.set(b, "villager");
+  const giveBack = [...bots].sort((a, b) => (host.redealt.has(b) ? 1 : 0) - (host.redealt.has(a) ? 1 : 0)); // stand-ins first
+  for (const [role, want] of [["wolf", g.wl], ["seer", seers]]) {
+    for (const b of giveBack) if (count(role) > want && roleOf(b) === role && known(b) !== "wolf") { host.roles.set(b, "villager"); host.redealt.delete(b); }
+    for (const b of bots) if (count(role) < want && roleOf(b) === "villager" && !(role === "wolf" && known(b) === "good")) { host.roles.set(b, role); host.redealt.add(b); }
+  }
   host.rolesDirty = host.whisperDirty = true;
 }
-/** A role re-sent to me (I am, or may become, the host). A late one undoes a bot stand-in. */
+/** A role re-sent to me (I am, or may become, the host). A late one can undo a bot stand-in. */
 function learnRole(id, v) {
   const g = game();
   if (!g || v.g !== g.id || !seatIn(g, id)) return;
   learn(id, v, g);
   if (host.needFill) return;
-  if (v.r !== "villager") for (const b of host.redealt) if (roleOf(b) === v.r) { host.roles.set(b, "villager"); host.redealt.delete(b); break; }
-  host.rolesDirty = host.whisperDirty = true;
+  fixRoles(g);
 }
 
 function onChat(from, msg) {
@@ -1191,11 +1200,11 @@ function renderOver(g) {
   $("oRoles").innerHTML = g.ros.map((r) => { const role = g.reveal?.[r.i] || "villager"; return `<div><span class="dot" style="background:${hsl(r.c)}"></span>${esc(r.n)} · ${roleSpan(role)}</div>`; }).join("");
   const mine = !!seatIn(g, net.sessionId), won = mine && sideWon(g), list = $("board");
   $("oYou").textContent = !mine ? "" : won ? "You won! +1 on the board." : "Your side lost this one.";
-  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
-  list.innerHTML = "<li>Loading the leaderboard…</li>";
+  if (!board) { list.innerHTML = "<li class='note'>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li class='note'>Loading the leaderboard…</li>";
   (won ? board.submit(1, "inc").catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
-    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} win${e.score === 1 ? "" : "s"}</span></li>`).join("") : "<li>No wins yet. Be the first.</li>";
-  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score} win${e.score === 1 ? "" : "s"}</span></li>`).join("") : "<li class='note'>No wins yet. Be the first.</li>";
+  }).catch(() => { list.innerHTML = "<li class='note'>Couldn't load the leaderboard.</li>"; });
 }
 
 // ── INPUT ───────────────────────────────────────────────────────────────────────────
@@ -1207,6 +1216,8 @@ function seatAt(x, y) {
 }
 cv.addEventListener("pointermove", (e) => { hover = seatAt(e.clientX, e.clientY); cv.style.cursor = hover && canTap(game(), hover) ? "pointer" : "default"; });
 cv.addEventListener("pointerdown", (e) => { e.preventDefault(); unlockAudio(); const id = seatAt(e.clientX, e.clientY); if (id) tapPlayer(id); if (document.activeElement === $("sayText") && e.pointerType !== "mouse") $("sayText").blur(); });
+cv.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") hover = ""; }); // a finger that lifted isn't hovering
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
 $("skip").addEventListener("click", () => castVote("skip"));
 $("say").addEventListener("submit", (e) => {
   e.preventDefault(); unlockAudio();
